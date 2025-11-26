@@ -9,7 +9,9 @@ import (
 
 // IssueItem wraps model.Issue to implement list.Item
 type IssueItem struct {
-	Issue model.Issue
+	Issue      model.Issue
+	GraphScore float64
+	Impact     float64
 }
 
 func (i IssueItem) Title() string {

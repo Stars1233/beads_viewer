@@ -40,4 +40,5 @@ require (
 	golang.org/x/sys v0.36.0 // indirect
 	golang.org/x/term v0.31.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
+	gonum.org/v1/gonum v0.16.0 // indirect
 )

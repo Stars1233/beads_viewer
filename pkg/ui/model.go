@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"beads_viewer/pkg/analysis"
 	"beads_viewer/pkg/model"
 	"beads_viewer/pkg/updater"
 
@@ -47,6 +48,7 @@ func CheckUpdateCmd() tea.Cmd {
 type Model struct {
 	issues        []model.Issue
 	issueMap      map[string]*model.Issue
+	analysis      analysis.GraphStats
 	list          list.Model
 	viewport      viewport.Model
 	renderer      *glamour.TermRenderer
@@ -100,7 +102,15 @@ func NewModel(issues []model.Issue) Model {
 	items := make([]list.Item, len(issues))
 	for i, issue := range issues {
 		issueMap[issue.ID] = &issues[i]
-		items[i] = IssueItem{Issue: issue}
+		
+		pr := graphStats.PageRank[issue.ID]
+		imp := graphStats.CriticalPathScore[issue.ID]
+		
+		items[i] = IssueItem{
+			Issue:      issue,
+			GraphScore: pr,
+			Impact:     imp,
+		}
 		
 		// Stats
 		if issue.Status == model.StatusClosed {
@@ -143,8 +153,12 @@ func NewModel(issues []model.Issue) Model {
 		}
 	}
 
+	// Graph Analysis
+	analyzer := analysis.NewAnalyzer(issues)
+	graphStats := analyzer.Analyze()
+
 	// Default delegate
-	delegate := IssueDelegate{Tier: TierCompact}
+	delegate := IssueDelegate{ShowExtraCols: false}
 	l := list.New(items, delegate, 0, 0)
 	l.Title = "Beads"
 	l.SetShowHelp(false)
@@ -164,6 +178,7 @@ func NewModel(issues []model.Issue) Model {
 	m := Model{
 		issues:        issues,
 		issueMap:      issueMap,
+		analysis:      graphStats,
 		list:          l,
 		renderer:      r,
 		board:         board,
@@ -498,7 +513,14 @@ func (m *Model) applyFilter() {
 		}
 
 		if include {
-			filteredItems = append(filteredItems, IssueItem{Issue: issue})
+			pr := m.analysis.PageRank[issue.ID]
+			imp := m.analysis.CriticalPathScore[issue.ID]
+			
+			filteredItems = append(filteredItems, IssueItem{
+				Issue:      issue,
+				GraphScore: pr,
+				Impact:     imp,
+			})
 			filteredIssues = append(filteredIssues, issue)
 		}
 	}
@@ -541,6 +563,15 @@ func (m *Model) updateViewportContent() {
 		item.CreatedAt.Format("2006-01-02"),
 	))
 	
+	// Graph Analysis
+	pr := m.analysis.PageRank[item.ID]
+	bt := m.analysis.Betweenness[item.ID]
+	imp := m.analysis.CriticalPathScore[item.ID]
+	
+	sb.WriteString("### Graph Analysis\n")
+	sb.WriteString(fmt.Sprintf("- **Impact Depth**: %.0f (Length of downstream dependency chain)\n", imp))
+	sb.WriteString(fmt.Sprintf("- **Centrality**: %.4f (PageRank), %.4f (Betweenness)\n\n", pr, bt))
+
 	// Description
 	if item.Description != "" {
 		sb.WriteString("### Description\n")

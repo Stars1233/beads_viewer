@@ -99,10 +99,22 @@ func (d IssueDelegate) Render(w io.Writer, m list.Model, index int, listItem lis
 
 	// Updated (UltraWide)
 	if d.Tier >= TierUltraWide {
-		// If created == updated, maybe dim it?
 		updatedStr := FormatTimeRel(i.Issue.UpdatedAt)
-		updated = ColAgeStyle.Copy().Width(10).Render(updatedStr) // Reuse age style but wider
-		extraWidth += 10
+		updated = ColAgeStyle.Copy().Width(10).Render(updatedStr)
+		
+		// Impact Score
+		impactVal := int(i.Impact)
+		impactStr := ""
+		if impactVal > 5 {
+			impactStr = fmt.Sprintf("🌋%d", impactVal)
+		} else if impactVal > 2 {
+			impactStr = fmt.Sprintf("🏔️%d", impactVal)
+		} else if impactVal > 0 {
+			impactStr = fmt.Sprintf("⛰️%d", impactVal)
+		}
+		updated = lipgloss.JoinHorizontal(lipgloss.Left, updated, lipgloss.NewStyle().Width(6).Align(lipgloss.Right).Render(impactStr))
+		
+		extraWidth += 16 // 10 (Updated) + 6 (Impact)
 	}
 
 	// Calculate Title Width

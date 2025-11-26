@@ -4,21 +4,19 @@ A polished, high-performance TUI for managing and exploring [Beads](https://gith
 
 ## Features
 
+### 🧠 Graph Theory Analytics
+*   **Critical Path Analysis**: Automatically identifies "Deep" tasks that block long chains of work (Impact Score).
+*   **Centrality Metrics**: Computes PageRank and Betweenness to highlight structural bottlenecks.
+*   **Cycle Detection**: Warns about circular dependencies.
+
 ### 🖥️ Visual Dashboard
-*   **Kanban Board**: Press `b` to toggle a 4-column Kanban board (Open, In Progress, Blocked, Closed).
-*   **Adaptive Split-View**: Automatically transitions to a master-detail dashboard on wide screens.
-*   **Ultra-Wide Layouts**: Scales up to 4 tiers of information density, showing labels, comments, and timestamps on large displays.
-*   **Rich Visualization**: Markdown rendering, syntax highlighting, and emoji status icons.
+*   **Kanban Board**: Press `b` to toggle a 4-column Kanban board.
+*   **Adaptive Split-View**: Master-detail dashboard on wide screens.
+*   **Ultra-Wide Layouts**: Shows Impact Scores (🌋/🏔️) on large displays.
 
 ### ⚡ Workflow
 *   **Instant Filtering**: `o` (Open), `r` (Ready), `c` (Closed), `a` (All).
-*   **Markdown Export**: Generate comprehensive reports with **Mermaid.js dependency graphs** using `bv --export-md report.md`.
-*   **Keyboard Centric**: `vim` style navigation (`j`/`k`), `h`/`l` for board columns.
-*   **Enhanced Search**: Fuzzy search includes titles, IDs, labels, and assignees.
-
-### 🛠️ Robustness
-*   **Self-Updating**: Automatically notifies you of new releases.
-*   **Reliable**: Handles complex data gracefully.
+*   **Mermaid Export**: `bv --export-md report.md` generates a report with a visual dependency graph.
 
 ## Installation
 
@@ -32,16 +30,14 @@ curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/beads_viewer/main
 bv
 ```
 
-### Controls
+### Keybindings
 
 | Key | Context | Action |
 | :--- | :--- | :--- |
-| `b` | Global | Toggle **Kanban Board** / List View |
-| `Tab` | Split View | Switch focus between List and Details |
-| `h`/`j`/`k`/`l`| Board | Navigate columns (h/l) and items (j/k) |
-| `Enter` | List/Board| Open/Focus details |
+| `b` | Global | Toggle **Kanban Board** |
+| `Tab` | Split View | Switch focus |
+| `h`/`j`/`k`/`l`| Board | Navigate |
 | `o` / `r` / `c` | Global | Filter status |
-| `/` | List | Start Search |
 | `q` | Global | Quit |
 
 ## CI/CD
