@@ -326,7 +326,7 @@ func main() {
 		}
 
 		// Launch TUI with historical issues
-		m := ui.NewModel(historicalIssues)
+		m := ui.NewModel(historicalIssues, activeRecipe)
 		p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 		if _, err := p.Run(); err != nil {
 			fmt.Printf("Error running beads viewer: %v\n", err)
@@ -357,7 +357,7 @@ func main() {
 	}
 
 	// Initial Model
-	m := ui.NewModel(issues)
+	m := ui.NewModel(issues, activeRecipe)
 
 	// Run Program
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())

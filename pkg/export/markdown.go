@@ -302,20 +302,24 @@ func getPriorityLabel(priority int) string {
 
 // SaveMarkdownToFile writes the generated markdown to a file
 func SaveMarkdownToFile(issues []model.Issue, filename string) error {
+	// Make a copy to avoid mutating the caller's slice
+	issuesCopy := make([]model.Issue, len(issues))
+	copy(issuesCopy, issues)
+
 	// Sort issues for the report: Open first, then priority, then date
-	sort.Slice(issues, func(i, j int) bool {
-		iClosed := issues[i].Status == model.StatusClosed
-		jClosed := issues[j].Status == model.StatusClosed
+	sort.Slice(issuesCopy, func(i, j int) bool {
+		iClosed := issuesCopy[i].Status == model.StatusClosed
+		jClosed := issuesCopy[j].Status == model.StatusClosed
 		if iClosed != jClosed {
 			return !iClosed
 		}
-		if issues[i].Priority != issues[j].Priority {
-			return issues[i].Priority < issues[j].Priority
+		if issuesCopy[i].Priority != issuesCopy[j].Priority {
+			return issuesCopy[i].Priority < issuesCopy[j].Priority
 		}
-		return issues[i].CreatedAt.After(issues[j].CreatedAt)
+		return issuesCopy[i].CreatedAt.After(issuesCopy[j].CreatedAt)
 	})
 
-	content, err := GenerateMarkdown(issues, "Beads Export")
+	content, err := GenerateMarkdown(issuesCopy, "Beads Export")
 	if err != nil {
 		return err
 	}
