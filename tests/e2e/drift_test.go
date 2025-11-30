@@ -143,13 +143,13 @@ func TestDriftAlerts(t *testing.T) {
 	// Blocked: 0 (all marked open)
 	baselineContent := ""
 	// A is free
-	baselineContent += `{"id": "A", "status": "open", "issue_type": "task"}` + "\n"
+	baselineContent += `{"id": "A", "title": "A", "status": "open", "issue_type": "task"}` + "\n"
 	// B depends on A
-	baselineContent += `{"id": "B", "status": "open", "issue_type": "task", "dependencies": [{"depends_on_id": "A", "type": "blocks"}]}` + "\n"
+	baselineContent += `{"id": "B", "title": "B", "status": "open", "issue_type": "task", "dependencies": [{"depends_on_id": "A", "type": "blocks"}]}` + "\n"
 	// C..J are free
 	ids := []string{"C", "D", "E", "F", "G", "H", "I", "J"}
 	for _, id := range ids {
-		baselineContent += fmt.Sprintf(`{"id": "%s", "status": "open", "issue_type": "task"}`, id) + "\n"
+		baselineContent += fmt.Sprintf(`{"id": "%s", "title": "%s", "status": "open", "issue_type": "task"}`, id, id) + "\n"
 	}
 
 	if err := os.WriteFile(beadsPath, []byte(baselineContent), 0644); err != nil {
@@ -169,20 +169,20 @@ func TestDriftAlerts(t *testing.T) {
 	// Total Edges: 9.
 	// Density = 9/90 = 0.1.
 	// Increase: (0.1 - 0.0111) / 0.0111 ~ 800%. Warning.
-	
+
 	// Blocked:
 	// Mark B..J as "blocked".
 	// Total Blocked: 9.
 	// Baseline Blocked: 0.
 	// Delta: 9. Threshold 5. Warning.
-	
-driftContent := ""
-	driftContent += `{"id": "A", "status": "open", "issue_type": "task"}` + "\n"
-	
+
+	driftContent := ""
+	driftContent += `{"id": "A", "title": "A", "status": "open", "issue_type": "task"}` + "\n"
+
 	// B..J depend on A and are blocked
 	allIds := []string{"B", "C", "D", "E", "F", "G", "H", "I", "J"}
 	for _, id := range allIds {
-		driftContent += fmt.Sprintf(`{"id": "%s", "status": "blocked", "issue_type": "task", "dependencies": [{"depends_on_id": "A", "type": "blocks"}]}`, id) + "\n"
+		driftContent += fmt.Sprintf(`{"id": "%s", "title": "%s", "status": "blocked", "issue_type": "task", "dependencies": [{"depends_on_id": "A", "type": "blocks"}]}`, id, id) + "\n"
 	}
 
 	if err := os.WriteFile(beadsPath, []byte(driftContent), 0644); err != nil {
@@ -212,5 +212,98 @@ driftContent := ""
 	}
 	if !strings.Contains(outputStr, "Blocked issues increased") {
 		t.Error("Output missing blocked issues warning")
+	}
+}
+func TestDriftConfigCustomization(t *testing.T) {
+	// 1. Build
+	tempDir := t.TempDir()
+	binPath := filepath.Join(tempDir, "bv")
+	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/bv/main.go")
+	cmd.Dir = "../../"
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("Build failed: %v\n%s", err, out)
+	}
+
+	envDir := filepath.Join(tempDir, "env")
+	if err := os.MkdirAll(filepath.Join(envDir, ".beads"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(envDir, ".bv"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	beadsPath := filepath.Join(envDir, ".beads", "beads.jsonl")
+	configPath := filepath.Join(envDir, ".bv", "drift.yaml")
+	var out []byte
+	var err error
+
+	// -------------------------------------------------------------------------
+	// Scenario 1: Custom High Thresholds (Suppress Warnings)
+	// -------------------------------------------------------------------------
+	t.Log("Scenario 1: Custom High Thresholds")
+
+	// Write custom config: Blocked Increase Threshold = 100 (default 5)
+	configContent := `blocked_increase_threshold: 100`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Baseline: 0 blocked
+	baselineContent := `{"id": "A", "status": "open", "issue_type": "task"}` + "\n"
+	if err := os.WriteFile(beadsPath, []byte(baselineContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmdSave := exec.Command(binPath, "--save-baseline", "Baseline")
+	cmdSave.Dir = envDir
+	out, err = cmdSave.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Save baseline failed: %v\n%s", err, out)
+	}
+
+	// Current: 10 blocked (would trigger default warning of 5)
+	driftContent := `{"id": "A", "status": "open", "issue_type": "task"}` + "\n"
+	// Add 10 blocked issues
+	for i := 0; i < 10; i++ {
+		driftContent += fmt.Sprintf(`{"id": "B%d", "status": "blocked", "issue_type": "task", "dependencies": [{"depends_on_id": "A", "type": "blocks"}]}`+"\n", i)
+	}
+	if err := os.WriteFile(beadsPath, []byte(driftContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check Drift - Should PASS (Exit 0) because 10 < 100
+	cmdCheck := exec.Command(binPath, "--check-drift")
+	cmdCheck.Dir = envDir
+	out, err = cmdCheck.CombinedOutput()
+	if err != nil {
+		t.Errorf("Expected pass with high threshold, got error: %v\nOutput: %s", err, out)
+	}
+
+	// -------------------------------------------------------------------------
+	// Scenario 2: Custom Low Thresholds (Trigger Warnings)
+	// -------------------------------------------------------------------------
+	t.Log("Scenario 2: Custom Low Thresholds")
+
+	// Write custom config: Blocked Increase Threshold = 1
+	configContent = `blocked_increase_threshold: 1`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Same drift data (10 blocked). 10 > 1. Should FAIL (Exit 2).
+	cmdCheck = exec.Command(binPath, "--check-drift")
+	cmdCheck.Dir = envDir
+	out, err = cmdCheck.CombinedOutput()
+
+	if err == nil {
+		t.Error("Expected warning with low threshold, got success")
+	} else {
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok || exitErr.ExitCode() != 2 {
+			t.Errorf("Expected exit code 2, got %v", err)
+		}
+		if !strings.Contains(string(out), "Blocked issues increased") {
+			t.Errorf("Expected blocked warning, got:\n%s", out)
+		}
 	}
 }
