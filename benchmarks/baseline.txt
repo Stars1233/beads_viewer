@@ -1,11 +1,11 @@
 Running quick benchmarks (CI mode)...
 goos: linux
 goarch: amd64
-pkg: beads_viewer/pkg/analysis
+pkg: github.com/Dicklesworthstone/beads_viewer/pkg/analysis
 cpu: AMD Ryzen Threadripper PRO 5975WX 32-Cores     
 BenchmarkFullAnalysis_ManyCycles20-64    	       5	 245313177 ns/op	220109878 B/op	  508060 allocs/op
 BenchmarkFullAnalysis_Sparse100-64       	     361	   4474591 ns/op	 3083389 B/op	   16777 allocs/op
 BenchmarkFullAnalysis_Sparse1000-64      	       7	 152180095 ns/op	131057789 B/op	  430022 allocs/op
 BenchmarkFullAnalysis_Dense100-64        	     168	   8826527 ns/op	 6383486 B/op	   33517 allocs/op
 PASS
-ok  	beads_viewer/pkg/analysis	11.475s
+ok  	github.com/Dicklesworthstone/beads_viewer/pkg/analysis	11.475s

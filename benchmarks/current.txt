@@ -1,6 +1,6 @@
 goos: linux
 goarch: amd64
-pkg: beads_viewer/pkg/analysis
+pkg: github.com/Dicklesworthstone/beads_viewer/pkg/analysis
 cpu: AMD Ryzen Threadripper PRO 5975WX 32-Cores     
 BenchmarkApproxBetweenness_500nodes_Exact-64        	       2	 723728387 ns/op	178799888 B/op	  828223 allocs/op
 BenchmarkApproxBetweenness_500nodes_Exact-64        	       2	 750428322 ns/op	166258104 B/op	  759121 allocs/op
