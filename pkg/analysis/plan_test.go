@@ -194,6 +194,25 @@ func TestGetExecutionPlanUnblocksCalculation(t *testing.T) {
 	}
 }
 
+func TestGenerateTrackID_Unbounded(t *testing.T) {
+	// Spot-check boundaries: 1 -> A, 26 -> Z, 27 -> AA, 52 -> AZ, 53 -> BA, 702 -> ZZ, 703 -> AAA
+	cases := map[int]string{
+		1:   "track-A",
+		26:  "track-Z",
+		27:  "track-AA",
+		52:  "track-AZ",
+		53:  "track-BA",
+		702: "track-ZZ",
+		703: "track-AAA",
+	}
+
+	for n, expected := range cases {
+		if got := analysis.GenerateTrackIDForTest(n); got != expected {
+			t.Fatalf("n=%d expected %s got %s", n, expected, got)
+		}
+	}
+}
+
 func TestGetExecutionPlanPartialUnblock(t *testing.T) {
 	// A depends on B AND C
 	// B is open, C is open

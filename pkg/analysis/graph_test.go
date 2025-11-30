@@ -48,14 +48,14 @@ func TestAnalyzeEmptyIssues(t *testing.T) {
 	stats := an.Analyze()
 
 	// All maps should be initialized but empty
-	if len(stats.PageRank) != 0 {
-		t.Errorf("Expected empty PageRank, got %d", len(stats.PageRank))
+	if len(stats.PageRank()) != 0 {
+		t.Errorf("Expected empty PageRank, got %d", len(stats.PageRank()))
 	}
-	if len(stats.Betweenness) != 0 {
-		t.Errorf("Expected empty Betweenness, got %d", len(stats.Betweenness))
+	if len(stats.Betweenness()) != 0 {
+		t.Errorf("Expected empty Betweenness, got %d", len(stats.Betweenness()))
 	}
-	if len(stats.CriticalPathScore) != 0 {
-		t.Errorf("Expected empty CriticalPathScore, got %d", len(stats.CriticalPathScore))
+	if len(stats.CriticalPathScore()) != 0 {
+		t.Errorf("Expected empty CriticalPathScore, got %d", len(stats.CriticalPathScore()))
 	}
 }
 
@@ -226,8 +226,8 @@ func TestAnalyzeIgnoresNonBlockingDependencies(t *testing.T) {
 	if len(stats.TopologicalOrder) != 2 {
 		t.Fatalf("expected topological order length 2, got %d", len(stats.TopologicalOrder))
 	}
-	if len(stats.Cycles) != 0 {
-		t.Fatalf("expected no cycles from non-blocking edges, got %d", len(stats.Cycles))
+	if len(stats.Cycles()) != 0 {
+		t.Fatalf("expected no cycles from non-blocking edges, got %d", len(stats.Cycles()))
 	}
 }
 
@@ -516,8 +516,8 @@ func TestAnalyzeSparseDisconnectedGraph(t *testing.T) {
 	go func() {
 		stats := an.Analyze()
 		// Verify we got reasonable results
-		if len(stats.PageRank) != 50 {
-			t.Errorf("Expected 50 PageRank entries, got %d", len(stats.PageRank))
+		if len(stats.PageRank()) != 50 {
+			t.Errorf("Expected 50 PageRank entries, got %d", len(stats.PageRank()))
 		}
 		close(done)
 	}()
@@ -565,13 +565,13 @@ func TestImpactScore(t *testing.T) {
 	an := analysis.NewAnalyzer(issues)
 	stats := an.Analyze()
 
-	if stats.CriticalPathScore["C"] != 3 {
-		t.Errorf("Expected C to have score 3, got %f", stats.CriticalPathScore["C"])
+	if stats.GetCriticalPathScore("C") != 3 {
+		t.Errorf("Expected C to have score 3, got %f", stats.GetCriticalPathScore("C"))
 	}
-	if stats.CriticalPathScore["B"] != 2 {
-		t.Errorf("Expected B to have score 2, got %f", stats.CriticalPathScore["B"])
+	if stats.GetCriticalPathScore("B") != 2 {
+		t.Errorf("Expected B to have score 2, got %f", stats.GetCriticalPathScore("B"))
 	}
-	if stats.CriticalPathScore["A"] != 1 {
-		t.Errorf("Expected A to have score 1, got %f", stats.CriticalPathScore["A"])
+	if stats.GetCriticalPathScore("A") != 1 {
+		t.Errorf("Expected A to have score 1, got %f", stats.GetCriticalPathScore("A"))
 	}
 }

@@ -102,8 +102,8 @@ func TestGraphMetrics_OnSampleFixture(t *testing.T) {
 	}
 
 	// PageRank map should contain all issue IDs
-	if len(stats.PageRank) != len(issues) {
-		t.Fatalf("pagerank entries (%d) != issue count (%d)", len(stats.PageRank), len(issues))
+	if len(stats.PageRank()) != len(issues) {
+		t.Fatalf("pagerank entries (%d) != issue count (%d)", len(stats.PageRank()), len(issues))
 	}
 }
 

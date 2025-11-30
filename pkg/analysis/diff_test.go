@@ -139,8 +139,9 @@ func TestDependencySetIgnoresNilAndEmpty(t *testing.T) {
 	if len(set) != 1 {
 		t.Fatalf("expected only non-empty dependencies to be counted, got %d", len(set))
 	}
-	if !set["A"] {
-		t.Fatalf("expected dependency 'A' to be present")
+	// Key now includes type (which is empty string in this test case)
+	if !set["A:"] {
+		t.Fatalf("expected dependency 'A:' to be present")
 	}
 }
 

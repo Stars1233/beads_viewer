@@ -59,8 +59,8 @@ func TestRealData_Cass(t *testing.T) {
 	stats := an.Analyze()
 
 	// Assert basic stats
-	if len(stats.PageRank) != len(issues) {
-		t.Errorf("PageRank count mismatch: got %d, want %d", len(stats.PageRank), len(issues))
+	if len(stats.PageRank()) != len(issues) {
+		t.Errorf("PageRank count mismatch: got %d, want %d", len(stats.PageRank()), len(issues))
 	}
 
 	// 2. Generate Execution Plan
@@ -124,8 +124,8 @@ func TestRealData_Srps(t *testing.T) {
 
 	// 2. Check for cycles (Srps might have cycles?)
 	stats := an.Analyze()
-	if len(stats.Cycles) > 0 {
-		t.Logf("Found %d cycles in srps.jsonl", len(stats.Cycles))
+	if len(stats.Cycles()) > 0 {
+		t.Logf("Found %d cycles in srps.jsonl", len(stats.Cycles()))
 	}
 }
 
@@ -253,11 +253,11 @@ func TestRealData_Combined(t *testing.T) {
 
 	t.Logf("- Tracks: %d", len(plan.Tracks))
 
-	t.Logf("- Cycles: %d", len(stats.Cycles))
+	t.Logf("- Cycles: %d", len(stats.Cycles()))
 
-	if len(stats.Cycles) > 0 {
+	if len(stats.Cycles()) > 0 {
 
-		for i, cycle := range stats.Cycles {
+		for i, cycle := range stats.Cycles() {
 
 			t.Logf("  Cycle %d: %v", i+1, cycle)
 
@@ -271,7 +271,7 @@ func TestRealData_Combined(t *testing.T) {
 
 	// or potential ID collisions (if any)
 
-	if len(stats.PageRank) != len(combined) {
+	if len(stats.PageRank()) != len(combined) {
 
 		// Note: PageRank might be missing for isolated nodes if the algo filters them?
 
@@ -291,9 +291,9 @@ func TestRealData_Combined(t *testing.T) {
 
 		}
 
-		if len(stats.PageRank) != len(uniqueIDs) {
+		if len(stats.PageRank()) != len(uniqueIDs) {
 
-			t.Errorf("PageRank count %d != Unique Issue Count %d", len(stats.PageRank), len(uniqueIDs))
+			t.Errorf("PageRank count %d != Unique Issue Count %d", len(stats.PageRank()), len(uniqueIDs))
 
 		}
 

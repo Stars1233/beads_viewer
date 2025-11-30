@@ -484,7 +484,9 @@ func dependencySet(deps []*model.Dependency) map[string]bool {
 		if dep == nil || dep.DependsOnID == "" {
 			continue
 		}
-		set[dep.DependsOnID] = true
+		// Key includes type to detect type changes (e.g. related -> blocks)
+		key := fmt.Sprintf("%s:%s", dep.DependsOnID, dep.Type)
+		set[key] = true
 	}
 	return set
 }

@@ -269,12 +269,24 @@ func (a *Analyzer) computePlanSummary(actionable []model.Issue, unblocksMap map[
 }
 
 func generateTrackID(n int) string {
-	// Handle tracks beyond 26 with AA, AB, etc.
-	if n <= 26 {
-		return "track-" + string(rune('A'+n-1))
+	// Convert 1-based n to base-26 alphabetic (A, B, ..., Z, AA, AB, ...).
+	// Works for arbitrarily many tracks.
+	if n <= 0 {
+		return "track-?"
 	}
-	// For n > 26, use two-letter IDs (AA, AB, ..., ZZ)
-	first := (n - 1) / 26
-	second := (n - 1) % 26
-	return "track-" + string(rune('A'+first-1)) + string(rune('A'+second))
+
+	n-- // switch to 0-based for conversion
+	var letters []rune
+	for n >= 0 {
+		letters = append([]rune{rune('A' + (n % 26))}, letters...)
+		n = n/26 - 1
+	}
+
+	return "track-" + string(letters)
+}
+
+// GenerateTrackIDForTest is exposed for tests only.
+// Do not use outside tests; keep generateTrackID unexported in production.
+func GenerateTrackIDForTest(n int) string {
+	return generateTrackID(n)
 }
