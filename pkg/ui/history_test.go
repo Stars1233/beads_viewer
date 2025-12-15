@@ -362,6 +362,23 @@ func TestHistoryModel_ViewEmpty(t *testing.T) {
 	}
 }
 
+func TestHistoryModel_ViewSmallWidth(t *testing.T) {
+	report := createTestHistoryReport()
+	theme := testTheme()
+	h := NewHistoryModel(report, theme)
+
+	// Test various small widths - should not panic
+	smallWidths := []int{5, 6, 7, 10, 15, 20}
+	for _, w := range smallWidths {
+		h.SetSize(w, 10)
+		// This should not panic
+		view := h.View()
+		if view == "" {
+			t.Errorf("View() with width %d returned empty", w)
+		}
+	}
+}
+
 func TestHistoryModel_SortByCommitCount(t *testing.T) {
 	report := createTestHistoryReport()
 	theme := testTheme()
