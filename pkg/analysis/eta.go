@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -186,7 +187,17 @@ func velocityMinutesPerDayForLabel(issues []model.Issue, label string, since tim
 	samples := 0
 
 	for _, iss := range issues {
-		if iss.ClosedAt == nil || iss.ClosedAt.Before(since) {
+		if iss.Status != model.StatusClosed {
+			continue
+		}
+
+		// Robust closure time: use ClosedAt if available, else UpdatedAt
+		closedAt := iss.UpdatedAt
+		if iss.ClosedAt != nil {
+			closedAt = *iss.ClosedAt
+		}
+
+		if closedAt.Before(since) {
 			continue
 		}
 		if label != "" && !hasLabel(iss.Labels, label) {
@@ -256,13 +267,7 @@ func computeMedianEstimatedMinutes(issues []model.Issue) int {
 	}
 
 	// Sort for median calculation
-	for i := 0; i < len(estimates)-1; i++ {
-		for j := i + 1; j < len(estimates); j++ {
-			if estimates[j] < estimates[i] {
-				estimates[i], estimates[j] = estimates[j], estimates[i]
-			}
-		}
-	}
+	sort.Ints(estimates)
 
 	mid := len(estimates) / 2
 	if len(estimates)%2 == 0 {

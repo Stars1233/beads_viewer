@@ -211,12 +211,12 @@ type Comment struct {
 type Sprint struct {
 	ID             string    `json:"id"`
 	Name           string    `json:"name"`
-	StartDate      time.Time `json:"start_date,omitempty"`
-	EndDate        time.Time `json:"end_date,omitempty"`
+	StartDate      time.Time `json:"start_date,omitzero"`
+	EndDate        time.Time `json:"end_date,omitzero"`
 	BeadIDs        []string  `json:"bead_ids,omitempty"`
 	VelocityTarget float64   `json:"velocity_target,omitempty"`
-	CreatedAt      time.Time `json:"created_at,omitempty"`
-	UpdatedAt      time.Time `json:"updated_at,omitempty"`
+	CreatedAt      time.Time `json:"created_at,omitzero"`
+	UpdatedAt      time.Time `json:"updated_at,omitzero"`
 }
 
 // Validate checks if the sprint data is logically valid
@@ -247,7 +247,7 @@ type Forecast struct {
 	ETADate    time.Time `json:"eta_date"`
 	Confidence float64   `json:"confidence"`
 	Factors    []string  `json:"factors,omitempty"`
-	CreatedAt  time.Time `json:"created_at,omitempty"`
+	CreatedAt  time.Time `json:"created_at,omitzero"`
 }
 
 // Validate checks if the forecast data is logically valid.

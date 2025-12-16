@@ -89,7 +89,7 @@ func getTopItems(m map[string]float64, limit int) []InsightItem {
 
 	sort.Slice(ss, func(i, j int) bool {
 		if ss[i].Value == ss[j].Value {
-			return ss[i].Key < ss[j].Key
+			return ss[i].Key < ss[j].Key // deterministic tie-break
 		}
 		return ss[i].Value > ss[j].Value
 	})
@@ -112,7 +112,7 @@ func getTopItemsInt(m map[string]int, limit int) []InsightItem {
 	}
 	sort.Slice(ss, func(i, j int) bool {
 		if ss[i].Value == ss[j].Value {
-			return ss[i].Key < ss[j].Key
+			return ss[i].Key < ss[j].Key // deterministic tie-break
 		}
 		return ss[i].Value > ss[j].Value
 	})

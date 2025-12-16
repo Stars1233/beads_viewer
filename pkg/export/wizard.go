@@ -178,7 +178,11 @@ func (w *Wizard) collectGitHubConfig() error {
 
 	// Suggest repo name based on current directory
 	cwd, _ := os.Getwd()
-	suggestedName := filepath.Base(cwd) + "-pages"
+	base := filepath.Base(cwd)
+	if base == "." || base == "/" {
+		base = "beads-viewer-pages"
+	}
+	suggestedName := base + "-pages"
 
 	w.config.RepoName = w.askString("Repository name", suggestedName)
 	w.config.RepoPrivate = w.askYesNo("Make repository private?", false)
@@ -196,7 +200,11 @@ func (w *Wizard) collectCloudflareConfig() error {
 	suggestedName := SuggestProjectName(w.beadsPath)
 	if suggestedName == "" {
 		cwd, _ := os.Getwd()
-		suggestedName = filepath.Base(cwd) + "-pages"
+		base := filepath.Base(cwd)
+		if base == "." || base == "/" {
+			base = "beads-viewer-pages"
+		}
+		suggestedName = base + "-pages"
 	}
 
 	w.config.CloudflareProject = w.askString("Cloudflare Pages project name", suggestedName)

@@ -37,6 +37,34 @@ func (m *ActionableModel) SetSize(width, height int) {
 	m.height = height
 }
 
+// PageUp moves selection up by a page
+func (m *ActionableModel) PageUp() {
+	if len(m.plan.Tracks) == 0 {
+		return
+	}
+	pageSize := m.height / 2
+	if pageSize < 1 {
+		pageSize = 1
+	}
+	for i := 0; i < pageSize; i++ {
+		m.MoveUp()
+	}
+}
+
+// PageDown moves selection down by a page
+func (m *ActionableModel) PageDown() {
+	if len(m.plan.Tracks) == 0 {
+		return
+	}
+	pageSize := m.height / 2
+	if pageSize < 1 {
+		pageSize = 1
+	}
+	for i := 0; i < pageSize; i++ {
+		m.MoveDown()
+	}
+}
+
 // MoveUp moves selection up
 func (m *ActionableModel) MoveUp() {
 	if len(m.plan.Tracks) == 0 {

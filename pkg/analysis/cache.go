@@ -3,6 +3,7 @@ package analysis
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"sort"
 	"strconv"
 	"sync"
@@ -212,13 +213,25 @@ func ComputeDataHash(issues []model.Issue) string {
 	return hex.EncodeToString(h.Sum(nil))[:16] // Use first 16 chars for brevity
 }
 
+// ComputeConfigHash generates a deterministic hash of the analysis configuration.
+func ComputeConfigHash(config *AnalysisConfig) string {
+	if config == nil {
+		return "dynamic"
+	}
+	h := sha256.New()
+	// Using %#v is stable enough for configuration struct
+	h.Write([]byte(fmt.Sprintf("%#v", *config)))
+	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
 // CachedAnalyzer wraps an Analyzer with caching support.
 type CachedAnalyzer struct {
 	*Analyzer
-	cache    *Cache
-	issues   []model.Issue
-	hash     string
-	cacheHit bool // Set by AnalyzeAsync to track if it was a cache hit
+	cache      *Cache
+	issues     []model.Issue
+	dataHash   string // Hash of the issue data
+	configHash string // Hash of the configuration
+	cacheHit   bool   // Set by AnalyzeAsync to track if it was a cache hit
 }
 
 // NewCachedAnalyzer creates an analyzer that checks the cache before computing.
@@ -230,17 +243,27 @@ func NewCachedAnalyzer(issues []model.Issue, cache *Cache) *CachedAnalyzer {
 		cache = globalCache
 	}
 	return &CachedAnalyzer{
-		Analyzer: NewAnalyzer(issues),
-		cache:    cache,
-		issues:   issues,
-		hash:     ComputeDataHash(issues),
+		Analyzer:   NewAnalyzer(issues),
+		cache:      cache,
+		issues:     issues,
+		dataHash:   ComputeDataHash(issues),
+		configHash: "dynamic",
 	}
+}
+
+// SetConfig updates the analyzer configuration and the configuration hash.
+func (ca *CachedAnalyzer) SetConfig(config *AnalysisConfig) {
+	ca.Analyzer.SetConfig(config)
+	ca.configHash = ComputeConfigHash(config)
 }
 
 // AnalyzeAsync returns cached stats if available, otherwise computes and caches.
 func (ca *CachedAnalyzer) AnalyzeAsync() *GraphStats {
+	// Combined key: dataHash|configHash
+	fullHash := ca.dataHash + "|" + ca.configHash
+
 	// Check cache first
-	if stats, ok := ca.cache.GetByHash(ca.hash); ok {
+	if stats, ok := ca.cache.GetByHash(fullHash); ok {
 		ca.cacheHit = true
 		return stats
 	}
@@ -252,7 +275,7 @@ func (ca *CachedAnalyzer) AnalyzeAsync() *GraphStats {
 	// Store in cache when Phase 2 completes
 	go func() {
 		stats.WaitForPhase2()
-		ca.cache.SetByHash(ca.hash, stats)
+		ca.cache.SetByHash(fullHash, stats)
 	}()
 
 	return stats
@@ -285,7 +308,7 @@ func (ca *CachedAnalyzer) Analyze() GraphStats {
 
 // DataHash returns the computed hash for the analyzer's issue data.
 func (ca *CachedAnalyzer) DataHash() string {
-	return ca.hash
+	return ca.dataHash
 }
 
 // WasCacheHit returns true if the last AnalyzeAsync call was a cache hit.

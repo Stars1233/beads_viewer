@@ -117,6 +117,17 @@ func (a *Analyzer) ComputeImpactScoresFromStats(stats *GraphStats, now time.Time
 	// Compute median estimated minutes for issues without estimates
 	medianMinutes := a.computeMedianEstimatedMinutes()
 
+	// Compute impact scores from stats
+	// Precompute dependents for risk signal optimization
+	dependents := make(map[string][]string)
+	for id, issue := range a.issueMap {
+		for _, dep := range issue.Dependencies {
+			if dep != nil && dep.Type.IsBlocking() {
+				dependents[dep.DependsOnID] = append(dependents[dep.DependsOnID], id)
+			}
+		}
+	}
+
 	var scores []ImpactScore
 
 	for id, issue := range a.issueMap {
@@ -143,7 +154,7 @@ func (a *Analyzer) ComputeImpactScoresFromStats(stats *GraphStats, now time.Time
 		urgencyNorm, urgencyExplanation := computeUrgency(&issue, now)
 
 		// Compute risk signals (bv-82)
-		riskSignals := ComputeRiskSignals(&issue, stats, a.issueMap, now)
+		riskSignals := ComputeRiskSignals(&issue, stats, a.issueMap, dependents, now)
 
 		// Compute weighted score
 		breakdown := ScoreBreakdown{

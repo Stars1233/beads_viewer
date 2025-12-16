@@ -172,15 +172,14 @@ func (s *StreamExtractor) parseStream(r io.Reader, filterBeadID string, closedSi
 	var currentCommit *commitBuffer
 	processed := 0
 
-	reader := bufio.NewReaderSize(r, 64*1024) // 64KB buffer
+	scanner := bufio.NewScanner(r)
+	// Use 64KB initial buffer, grow up to 10MB (matching extractor.go)
+	buf := make([]byte, 64*1024)
+	const maxCapacity = 10 * 1024 * 1024 // 10MB
+	scanner.Buffer(buf, maxCapacity)
 
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil && err != io.EOF {
-			return events, fmt.Errorf("reading stream: %w", err)
-		}
-
-		line = strings.TrimSuffix(line, "\n")
+	for scanner.Scan() {
+		line := scanner.Text()
 
 		// Check for new commit header
 		if s.commitPattern.MatchString(line) {
@@ -206,10 +205,10 @@ func (s *StreamExtractor) parseStream(r io.Reader, filterBeadID string, closedSi
 				currentCommit.diffLines = append(currentCommit.diffLines, line)
 			}
 		}
+	}
 
-		if err == io.EOF {
-			break
-		}
+	if err := scanner.Err(); err != nil {
+		return events, fmt.Errorf("scanning stream: %w", err)
 	}
 
 	// Process final commit
@@ -274,20 +273,29 @@ func (s *StreamExtractor) parseBufferedDiff(lines []string, info commitInfo, fil
 	seenBeads := make(map[string]bool)
 
 	for _, line := range lines {
-		if strings.HasPrefix(line, "-{") {
-			jsonStr := strings.TrimPrefix(line, "-")
-			if snap, ok := parseBeadJSON(jsonStr); ok {
-				if filterBeadID == "" || snap.ID == filterBeadID {
-					oldBeads[snap.ID] = snap
-					seenBeads[snap.ID] = true
+		// Robustly handle diff lines:
+		// 1. Identify removal (-) or addition (+)
+		// 2. Trim spaces to handle indented JSON (e.g. "  {")
+		// 3. Verify it starts with "{" to avoid false positives on non-JSON diffs
+
+		if strings.HasPrefix(line, "-") {
+			jsonStr := strings.TrimSpace(strings.TrimPrefix(line, "-"))
+			if strings.HasPrefix(jsonStr, "{") {
+				if snap, ok := parseBeadJSON(jsonStr); ok {
+					if filterBeadID == "" || snap.ID == filterBeadID {
+						oldBeads[snap.ID] = snap
+						seenBeads[snap.ID] = true
+					}
 				}
 			}
-		} else if strings.HasPrefix(line, "+{") {
-			jsonStr := strings.TrimPrefix(line, "+")
-			if snap, ok := parseBeadJSON(jsonStr); ok {
-				if filterBeadID == "" || snap.ID == filterBeadID {
-					newBeads[snap.ID] = snap
-					seenBeads[snap.ID] = true
+		} else if strings.HasPrefix(line, "+") {
+			jsonStr := strings.TrimSpace(strings.TrimPrefix(line, "+"))
+			if strings.HasPrefix(jsonStr, "{") {
+				if snap, ok := parseBeadJSON(jsonStr); ok {
+					if filterBeadID == "" || snap.ID == filterBeadID {
+						newBeads[snap.ID] = snap
+						seenBeads[snap.ID] = true
+					}
 				}
 			}
 		}

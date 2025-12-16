@@ -16,6 +16,10 @@ var (
 
 // RenderSparkline creates a textual bar chart of value (0.0 - 1.0)
 func RenderSparkline(val float64, width int) string {
+	if width <= 0 {
+		return ""
+	}
+
 	chars := []string{" ", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
 	// If width > 1, we can show history? Or just a bar?
 	// Let's render a horizontal bar: `███▌    `

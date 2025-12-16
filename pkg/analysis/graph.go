@@ -1240,10 +1240,19 @@ func minInt(a, b int) int {
 // 1. It is not closed
 // 2. All its blocking dependencies (type "blocks") are closed
 // Missing blockers don't block (graceful degradation).
+// Returns list sorted by ID for determinism.
 func (a *Analyzer) GetActionableIssues() []model.Issue {
 	var actionable []model.Issue
 
-	for _, issue := range a.issueMap {
+	// Collect IDs first to sort for deterministic iteration
+	var ids []string
+	for id := range a.issueMap {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	for _, id := range ids {
+		issue := a.issueMap[id]
 		if issue.Status == model.StatusClosed {
 			continue
 		}

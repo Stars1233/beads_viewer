@@ -163,17 +163,33 @@ func (a *Analyzer) findConnectedComponents() map[string][]string {
 	union := func(x, y string) {
 		px, py := find(x), find(y)
 		if px != py {
-			parent[px] = py
+			// Deterministic merge: always attach larger ID to smaller ID (or vice versa)
+			// This ensures the root choice doesn't depend on visitation order,
+			// though finding the MST still requires stable iteration.
+			if px < py {
+				parent[py] = px
+			} else {
+				parent[px] = py
+			}
 		}
 	}
 
 	// Initialize all issues
+	// Use sorted IDs for deterministic iteration order
+	var ids []string
 	for id := range a.issueMap {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	for _, id := range ids {
 		parent[id] = id
 	}
 
 	// Union issues connected by dependencies (ignoring direction)
-	for _, issue := range a.issueMap {
+	// Iterate in sorted order to ensure deterministic tree structure
+	for _, id := range ids {
+		issue := a.issueMap[id]
 		for _, dep := range issue.Dependencies {
 			if dep.Type.IsBlocking() {
 				if _, exists := a.issueMap[dep.DependsOnID]; exists {
@@ -185,7 +201,7 @@ func (a *Analyzer) findConnectedComponents() map[string][]string {
 
 	// Group by root
 	components := make(map[string][]string)
-	for id := range a.issueMap {
+	for _, id := range ids {
 		root := find(id)
 		components[root] = append(components[root], id)
 	}

@@ -23,7 +23,7 @@ func TestComputeRiskSignals_EmptyIssue(t *testing.T) {
 	issues := make(map[string]model.Issue)
 	issues["TEST-1"] = *issue
 
-	signals := ComputeRiskSignals(issue, &stats, issues, time.Now())
+	signals := ComputeRiskSignals(issue, &stats, issues, nil, time.Now())
 
 	// Empty issue with no deps should have low risk
 	if signals.FanVariance > 0.1 {
@@ -69,7 +69,7 @@ func TestComputeRiskSignals_FanVariance(t *testing.T) {
 		OutDegree: map[string]int{"HUB": 3, "DEP-1": 0, "DEP-2": 2, "DEP-3": 0},
 	}
 
-	signals := ComputeRiskSignals(&hub, &stats, issues, now)
+	signals := ComputeRiskSignals(&hub, &stats, issues, nil, now)
 
 	// Should have some fan variance due to differing neighbor degrees
 	if signals.FanVariance < 0.1 {
@@ -134,7 +134,7 @@ func TestComputeRiskSignals_StatusRisk(t *testing.T) {
 			}
 			issues := make(map[string]model.Issue)
 
-			signals := ComputeRiskSignals(issue, &stats, issues, now)
+			signals := ComputeRiskSignals(issue, &stats, issues, nil, now)
 
 			if tc.expectHigh && signals.StatusRisk < 0.5 {
 				t.Errorf("expected high status risk for %s, got %f", tc.name, signals.StatusRisk)
@@ -183,8 +183,8 @@ func TestComputeRiskSignals_ActivityChurn(t *testing.T) {
 	}
 	issues := make(map[string]model.Issue)
 
-	highChurnSignals := ComputeRiskSignals(highChurnIssue, &stats, issues, now)
-	lowChurnSignals := ComputeRiskSignals(lowChurnIssue, &stats, issues, now)
+	highChurnSignals := ComputeRiskSignals(highChurnIssue, &stats, issues, nil, now)
+	lowChurnSignals := ComputeRiskSignals(lowChurnIssue, &stats, issues, nil, now)
 
 	if highChurnSignals.ActivityChurn <= lowChurnSignals.ActivityChurn {
 		t.Errorf("high churn issue should have higher activity churn: high=%f, low=%f",
@@ -223,7 +223,7 @@ func TestComputeRiskSignals_CrossRepoRisk(t *testing.T) {
 		OutDegree: make(map[string]int),
 	}
 
-	signals := ComputeRiskSignals(&issueA, &stats, issues, now)
+	signals := ComputeRiskSignals(&issueA, &stats, issues, nil, now)
 
 	// All deps are cross-repo, so should have high cross-repo risk
 	if signals.CrossRepoRisk < 0.9 {
@@ -266,7 +266,7 @@ func TestComputeRiskSignals_CompositeRisk(t *testing.T) {
 		OutDegree: map[string]int{"HIGH-RISK": 1, "DEP-1": 0},
 	}
 
-	signals := ComputeRiskSignals(&highRiskIssue, &stats, issues, now)
+	signals := ComputeRiskSignals(&highRiskIssue, &stats, issues, nil, now)
 
 	// Composite risk should be significant
 	if signals.CompositeRisk < 0.4 {

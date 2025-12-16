@@ -54,21 +54,21 @@ func (p *PreviewServer) Start() error {
 	mux.HandleFunc("/__preview__/status", p.statusHandler)
 
 	p.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", p.port),
+		Addr:    fmt.Sprintf("127.0.0.1:%d", p.port),
 		Handler: mux,
 	}
 
 	// Open browser after short delay
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		url := fmt.Sprintf("http://localhost:%d", p.port)
+		url := fmt.Sprintf("http://127.0.0.1:%d", p.port)
 		if err := OpenInBrowser(url); err != nil {
 			fmt.Printf("Could not open browser: %v\n", err)
 			fmt.Printf("Open %s in your browser\n", url)
 		}
 	}()
 
-	fmt.Printf("\nPreview server running at http://localhost:%d\n", p.port)
+	fmt.Printf("\nPreview server running at http://127.0.0.1:%d\n", p.port)
 	fmt.Printf("Serving: %s\n", p.bundlePath)
 	fmt.Println("\nPress Ctrl+C to stop")
 
@@ -80,6 +80,7 @@ func (p *PreviewServer) StartWithGracefulShutdown() error {
 	// Channel to receive OS signals
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(stop)
 
 	// Channel to receive server errors
 	errChan := make(chan error, 1)
@@ -120,7 +121,7 @@ func (p *PreviewServer) Port() int {
 
 // URL returns the full URL of the preview server.
 func (p *PreviewServer) URL() string {
-	return fmt.Sprintf("http://localhost:%d", p.port)
+	return fmt.Sprintf("http://127.0.0.1:%d", p.port)
 }
 
 // statusHandler returns the preview server status as JSON.
@@ -156,17 +157,6 @@ func noCacheMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
 
-		// Add CORS headers for development
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-		// Handle preflight
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
 		next.ServeHTTP(w, r)
 	})
 }
@@ -174,7 +164,7 @@ func noCacheMiddleware(next http.Handler) http.Handler {
 // FindAvailablePort finds an available port in the given range.
 func FindAvailablePort(start, end int) (int, error) {
 	for port := start; port <= end; port++ {
-		listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err == nil {
 			listener.Close()
 			return port, nil
@@ -261,24 +251,10 @@ func StartPreviewWithConfig(config PreviewConfig) error {
 
 	// Start server
 	if !config.Quiet {
-		fmt.Printf("\nPreview server running at http://localhost:%d\n", port)
+		fmt.Printf("\nPreview server running at http://127.0.0.1:%d\n", port)
 		fmt.Printf("Serving: %s\n", config.BundlePath)
 		fmt.Println("\nPress Ctrl+C to stop")
 	}
-
-	// Channel to receive OS signals
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-
-	// Channel to receive server errors
-	errChan := make(chan error, 1)
-
-	// Start server in goroutine
-	go func() {
-		if err := server.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errChan <- err
-		}
-	}()
 
 	// Need to initialize the server first
 	mux := http.NewServeMux()
@@ -287,11 +263,19 @@ func StartPreviewWithConfig(config PreviewConfig) error {
 	mux.HandleFunc("/__preview__/status", server.statusHandler)
 
 	server.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
+		Addr:    fmt.Sprintf("127.0.0.1:%d", port),
 		Handler: mux,
 	}
 
-	// Restart with proper server
+	// Channel to receive OS signals
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(stop)
+
+	// Channel to receive server errors
+	errChan := make(chan error, 1)
+
+	// Start server in goroutine
 	go func() {
 		if err := server.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errChan <- err

@@ -111,16 +111,17 @@ func TestWizardConfigPath(t *testing.T) {
 }
 
 func TestSaveAndLoadWizardConfig(t *testing.T) {
-	// Create a temp config directory
 	tmpDir := t.TempDir()
-	configDir := filepath.Join(tmpDir, ".config", "bv")
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		t.Fatalf("Failed to create config dir: %v", err)
+	t.Setenv("HOME", tmpDir)
+
+	loaded, err := LoadWizardConfig()
+	if err != nil {
+		t.Fatalf("LoadWizardConfig returned error: %v", err)
+	}
+	if loaded != nil {
+		t.Fatalf("Expected nil config when file doesn't exist, got %+v", loaded)
 	}
 
-	configPath := filepath.Join(configDir, "pages-wizard.json")
-
-	// Create config to save
 	config := &WizardConfig{
 		IncludeClosed: true,
 		Title:         "Saved Title",
@@ -129,14 +130,47 @@ func TestSaveAndLoadWizardConfig(t *testing.T) {
 		RepoPrivate:   true,
 	}
 
-	// We can't easily test SaveWizardConfig because it uses a fixed path
-	// So we'll just test the config struct serialization
-	if config.Title != "Saved Title" {
-		t.Errorf("Expected Title 'Saved Title', got %s", config.Title)
+	if err := SaveWizardConfig(config); err != nil {
+		t.Fatalf("SaveWizardConfig returned error: %v", err)
 	}
 
-	// Just verify the config path function works
-	_ = configPath
+	loaded, err = LoadWizardConfig()
+	if err != nil {
+		t.Fatalf("LoadWizardConfig after save returned error: %v", err)
+	}
+	if loaded == nil {
+		t.Fatal("Expected loaded config, got nil")
+	}
+	if loaded.Title != "Saved Title" {
+		t.Fatalf("Expected loaded Title %q, got %q", "Saved Title", loaded.Title)
+	}
+	if loaded.RepoName != "saved-repo" {
+		t.Fatalf("Expected loaded RepoName %q, got %q", "saved-repo", loaded.RepoName)
+	}
+	if loaded.DeployTarget != "github" {
+		t.Fatalf("Expected loaded DeployTarget %q, got %q", "github", loaded.DeployTarget)
+	}
+}
+
+func TestLoadWizardConfig_InvalidJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	configPath := WizardConfigPath()
+	if configPath == "" {
+		t.Skip("WizardConfigPath returned empty path")
+	}
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(configPath, []byte("{"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	_, err := LoadWizardConfig()
+	if err == nil {
+		t.Fatal("Expected LoadWizardConfig to return error for invalid JSON")
+	}
 }
 
 func TestWizard_PerformExport(t *testing.T) {

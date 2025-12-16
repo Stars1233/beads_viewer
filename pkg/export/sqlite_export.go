@@ -576,6 +576,12 @@ func (e *SQLiteExporter) GetExportedIssues() []ExportIssue {
 func (e *SQLiteExporter) ExportToJSON(path string) error {
 	issues := e.GetExportedIssues()
 
+	// Use Config.Title or fallback to default
+	title := e.Config.Title
+	if title == "" {
+		title = "Beads Export"
+	}
+
 	output := struct {
 		Meta   ExportMeta    `json:"meta"`
 		Issues []ExportIssue `json:"issues"`
@@ -586,6 +592,7 @@ func (e *SQLiteExporter) ExportToJSON(path string) error {
 			GitCommit:   e.gitHash,
 			IssueCount:  len(issues),
 			DepCount:    len(e.Deps),
+			Title:       title,
 		},
 		Issues: issues,
 	}

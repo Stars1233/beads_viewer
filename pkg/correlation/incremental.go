@@ -245,40 +245,24 @@ func extractEventsFromCommits(extractor *Extractor, commitSHAs []string, filterB
 		return nil, nil
 	}
 
-	// Use git log with specific commits
-	// Build commit range: first^..last includes all commits in the list
-	first := commitSHAs[0]
-	last := commitSHAs[len(commitSHAs)-1]
-
+	// Use git log with --no-walk to process specific commits exactly as listed.
+	// This avoids range semantics (A..B) which can be tricky with root commits
+	// or non-linear history segments.
 	args := []string{
 		"log",
 		"-p",
 		"--format=%H|%aI|%an|%ae|%s",
-		fmt.Sprintf("%s^..%s", first, last),
-		"--",
-		".beads/beads.jsonl",
+		"--no-walk",
 	}
+	args = append(args, commitSHAs...)
+	args = append(args, "--", ".beads/beads.jsonl")
 
 	cmd := exec.Command("git", args...)
 	cmd.Dir = extractor.repoPath
 
 	out, err := cmd.Output()
 	if err != nil {
-		// Try without the caret (in case first commit has no parent)
-		args[3] = fmt.Sprintf("%s~1..%s", first, last)
-		cmd = exec.Command("git", args...)
-		cmd.Dir = extractor.repoPath
-		out, err = cmd.Output()
-		if err != nil {
-			// Last resort: just use the range without parent notation
-			args[3] = fmt.Sprintf("%s..%s", first, last)
-			cmd = exec.Command("git", args...)
-			cmd.Dir = extractor.repoPath
-			out, err = cmd.Output()
-			if err != nil {
-				return nil, fmt.Errorf("git log for commits failed: %w", err)
-			}
-		}
+		return nil, fmt.Errorf("git log for commits failed: %w", err)
 	}
 
 	events, err := extractor.parseGitLogOutput(bytes.NewReader(out), filterBeadID)
@@ -286,7 +270,8 @@ func extractEventsFromCommits(extractor *Extractor, commitSHAs []string, filterB
 		return nil, err
 	}
 
-	// Reverse to chronological order
+	// Reverse to chronological order (git log output depends on input order but usually LIFO)
+	// We want chronological for the history report
 	reverseEvents(events)
 	return events, nil
 }

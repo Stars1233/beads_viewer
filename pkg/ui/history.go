@@ -65,6 +65,12 @@ func (h *HistoryModel) SetReport(report *correlation.HistoryReport) {
 
 // rebuildFilteredList rebuilds the filtered and sorted list of histories
 func (h *HistoryModel) rebuildFilteredList() {
+	// Capture current selection
+	var selectedID string
+	if h.selectedBead < len(h.beadIDs) {
+		selectedID = h.beadIDs[h.selectedBead]
+	}
+
 	h.histories = nil
 	h.beadIDs = nil
 
@@ -126,8 +132,30 @@ func (h *HistoryModel) rebuildFilteredList() {
 		h.beadIDs[i] = hist.BeadID
 	}
 
-	// Reset selection if out of bounds
-	if h.selectedBead >= len(h.histories) {
+	// Restore selection if possible
+	found := false
+	if selectedID != "" {
+		for i, id := range h.beadIDs {
+			if id == selectedID {
+				h.selectedBead = i
+				found = true
+				break
+			}
+		}
+	}
+
+	if found {
+		// Clamp selected commit as commit list might have shrunk
+		numCommits := len(h.histories[h.selectedBead].Commits)
+		if h.selectedCommit >= numCommits {
+			if numCommits > 0 {
+				h.selectedCommit = numCommits - 1
+			} else {
+				h.selectedCommit = 0
+			}
+		}
+	} else {
+		// Reset selection if out of bounds or lost
 		h.selectedBead = 0
 		h.selectedCommit = 0
 	}

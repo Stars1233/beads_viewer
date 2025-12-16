@@ -1,6 +1,7 @@
 package export
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -34,11 +35,11 @@ func TestPreviewServer_Port(t *testing.T) {
 }
 
 func TestPreviewServer_URL(t *testing.T) {
-	server := NewPreviewServer("/tmp/test", 9002)
-
-	expected := "http://localhost:9002"
-	if server.URL() != expected {
-		t.Errorf("Expected URL() to return %s, got %s", expected, server.URL())
+	port := 9002
+	server := NewPreviewServer("/tmp", port)
+	expected := fmt.Sprintf("http://127.0.0.1:%d", port)
+	if got := server.URL(); got != expected {
+		t.Errorf("Expected URL() to return %s, got %s", expected, got)
 	}
 }
 
@@ -249,22 +250,10 @@ func TestNoCacheMiddleware(t *testing.T) {
 	if rec.headers.Get("Expires") != "0" {
 		t.Errorf("Expected Expires: 0, got %s", rec.headers.Get("Expires"))
 	}
-}
 
-func TestNoCacheMiddleware_OPTIONS(t *testing.T) {
-	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("Inner handler should not be called for OPTIONS")
-	})
-
-	handler := noCacheMiddleware(inner)
-
-	req, _ := http.NewRequest("OPTIONS", "/", nil)
-	rec := &testResponseWriter{headers: make(http.Header)}
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.statusCode != http.StatusOK {
-		t.Errorf("Expected status 200 for OPTIONS, got %d", rec.statusCode)
+	// Verify no CORS headers
+	if rec.headers.Get("Access-Control-Allow-Origin") != "" {
+		t.Error("Unexpected CORS header Access-Control-Allow-Origin found")
 	}
 }
 
