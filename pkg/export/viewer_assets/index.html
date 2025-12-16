@@ -1197,9 +1197,47 @@
       </div>
 
       <!-- Graph view (placeholder for force graph integration) -->
-      <div x-show="view === 'graph'">
+      <div x-show="view === 'graph'" x-data="{ currentPreset: 'force' }">
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-          <h2 class="text-lg font-semibold mb-4">Dependency Graph</h2>
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold">Dependency Graph</h2>
+            <!-- Layout Preset Selector (bv-97) -->
+            <div class="flex items-center space-x-2">
+              <span class="text-sm text-gray-500 dark:text-gray-400">Layout:</span>
+              <div class="inline-flex rounded-lg bg-gray-100 dark:bg-gray-700 p-1">
+                <button @click="applyGraphPreset('force'); currentPreset = 'force'"
+                        :class="currentPreset === 'force' ? 'bg-white dark:bg-gray-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-gray-600'"
+                        class="px-2 py-1 text-xs rounded-md transition-colors" title="Standard force-directed">
+                  🔄 Force
+                </button>
+                <button @click="applyGraphPreset('compact'); currentPreset = 'compact'"
+                        :class="currentPreset === 'compact' ? 'bg-white dark:bg-gray-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-gray-600'"
+                        class="px-2 py-1 text-xs rounded-md transition-colors" title="Compact DAG for large graphs">
+                  📦 Compact
+                </button>
+                <button @click="applyGraphPreset('spread'); currentPreset = 'spread'"
+                        :class="currentPreset === 'spread' ? 'bg-white dark:bg-gray-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-gray-600'"
+                        class="px-2 py-1 text-xs rounded-md transition-colors" title="Maximum spacing for exports">
+                  🌟 Spread
+                </button>
+                <button @click="applyGraphPreset('orthogonal'); currentPreset = 'orthogonal'"
+                        :class="currentPreset === 'orthogonal' ? 'bg-white dark:bg-gray-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-gray-600'"
+                        class="px-2 py-1 text-xs rounded-md transition-colors" title="Grid-aligned layout">
+                  📐 Orthogonal
+                </button>
+                <button @click="applyGraphPreset('radial'); currentPreset = 'radial'"
+                        :class="currentPreset === 'radial' ? 'bg-white dark:bg-gray-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-gray-600'"
+                        class="px-2 py-1 text-xs rounded-md transition-colors" title="Radial from center">
+                  🎯 Radial
+                </button>
+                <button @click="applyGraphPreset('cluster'); currentPreset = 'cluster'"
+                        :class="currentPreset === 'cluster' ? 'bg-white dark:bg-gray-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-gray-600'"
+                        class="px-2 py-1 text-xs rounded-md transition-colors" title="Group by status">
+                  🔲 Cluster
+                </button>
+              </div>
+            </div>
+          </div>
           <div id="graph-container" class="w-full h-[600px] bg-gray-50 dark:bg-gray-900 rounded-lg">
             <!-- Force graph will be mounted here -->
             <p class="text-gray-500 dark:text-gray-400 text-center py-8">Graph visualization loading...</p>

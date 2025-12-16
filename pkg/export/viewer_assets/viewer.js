@@ -2459,6 +2459,35 @@ function beadsApp() {
     },
 
     /**
+     * Apply a layout preset to the graph (bv-97)
+     * @param {string} presetName - One of: 'force', 'compact', 'spread', 'orthogonal', 'radial', 'cluster'
+     */
+    applyGraphPreset(presetName) {
+      if (!this.forceGraphModule) {
+        showToast('Graph not initialized', 'warning');
+        return;
+      }
+      if (this.forceGraphModule.applyPreset) {
+        const success = this.forceGraphModule.applyPreset(presetName);
+        if (success) {
+          const presets = this.forceGraphModule.getLayoutPresets?.() || {};
+          const preset = presets[presetName];
+          showToast(`Layout: ${preset?.name || presetName}`, 'info');
+        }
+      } else {
+        showToast('Presets not available', 'warning');
+      }
+    },
+
+    /**
+     * Get available layout presets (bv-97)
+     */
+    getGraphPresets() {
+      if (!this.forceGraphModule?.getLayoutPresets) return {};
+      return this.forceGraphModule.getLayoutPresets();
+    },
+
+    /**
      * Check if an issue is on the critical path
      */
     isOnCriticalPath(issueId) {

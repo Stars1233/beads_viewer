@@ -158,6 +158,7 @@ type InsightsModel struct {
 	showExplanations bool
 	showCalculation  bool
 	showDetailPanel  bool
+	showHeatmap      bool // Toggle between list and heatmap view (bv-95)
 
 	// Dimensions
 	width  int
@@ -293,6 +294,11 @@ func (m *InsightsModel) ToggleExplanations() {
 
 func (m *InsightsModel) ToggleCalculation() {
 	m.showCalculation = !m.showCalculation
+}
+
+// ToggleHeatmap toggles between priority list and heatmap view (bv-95)
+func (m *InsightsModel) ToggleHeatmap() {
+	m.showHeatmap = !m.showHeatmap
 }
 
 // currentPanelItemCount returns the number of items in the focused panel (including cycles)
@@ -449,7 +455,13 @@ func (m *InsightsModel) View() string {
 	row2 := lipgloss.JoinHorizontal(lipgloss.Top, panels[3], panels[4], panels[5])
 	row3 := lipgloss.JoinHorizontal(lipgloss.Top, panels[6], panels[7], panels[8])
 	// Priority panel spans full width for prominence (bv-91)
-	row4 := m.renderPriorityPanel(mainWidth-2, rowHeight, t)
+	// Toggle between priority list and heatmap view (bv-95)
+	var row4 string
+	if m.showHeatmap {
+		row4 = m.renderHeatmapPanel(mainWidth-2, rowHeight, t)
+	} else {
+		row4 = m.renderPriorityPanel(mainWidth-2, rowHeight, t)
+	}
 
 	mainContent := lipgloss.JoinVertical(lipgloss.Left, row1, row2, row3, row4)
 
@@ -945,6 +957,43 @@ func (m *InsightsModel) renderPriorityPanel(width, height int, t Theme) string {
 	return panelStyle.Render(sb.String())
 }
 
+// renderHeatmapPanel renders a priority heatmap visualization (bv-95 stub)
+// TODO(bv-95): Implement full heatmap with priority score vs critical-path depth vs due-in
+func (m *InsightsModel) renderHeatmapPanel(width, height int, t Theme) string {
+	info := metricDescriptions[PanelPriority]
+	isFocused := m.focusedPanel == PanelPriority
+
+	borderColor := t.Secondary
+	if isFocused {
+		borderColor = t.Primary
+	}
+
+	panelStyle := t.Renderer.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Width(width).
+		Height(height).
+		Padding(0, 1)
+
+	titleStyle := t.Renderer.NewStyle().Bold(true)
+	if isFocused {
+		titleStyle = titleStyle.Foreground(t.Primary)
+	} else {
+		titleStyle = titleStyle.Foreground(t.Secondary)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(titleStyle.Render(info.Icon + " Priority Heatmap"))
+	sb.WriteString("\n\n")
+
+	emptyStyle := t.Renderer.NewStyle().
+		Foreground(t.Subtext).
+		Italic(true)
+	sb.WriteString(emptyStyle.Render("Heatmap visualization coming soon (bv-95).\nPress 'H' to toggle back to list view."))
+
+	return panelStyle.Render(sb.String())
+}
+
 // renderMiniBar renders a compact progress bar for metric visualization (bv-93)
 // label: 2-char label (e.g., "PR", "BW", "TI")
 // value: normalized 0.0-1.0
@@ -958,10 +1007,17 @@ func (m *InsightsModel) renderMiniBar(label string, value float64, width int, t 
 		value = 1
 	}
 
-	// Bar width = total - label(2) - colon(1) - space(1) - brackets(2)
-	barWidth := width - 6
-	if barWidth < 3 {
-		barWidth = 3
+	prefix := label + ":"
+	prefixLen := len([]rune(prefix))
+
+	// Bar width = total - prefix
+	barWidth := width - prefixLen
+	if barWidth < 1 {
+		// Not enough space for any bar
+		if width >= prefixLen {
+			return t.Renderer.NewStyle().Foreground(t.Subtext).Render(prefix)
+		}
+		return ""
 	}
 
 	filled := int(float64(barWidth) * value)
@@ -987,7 +1043,7 @@ func (m *InsightsModel) renderMiniBar(label string, value float64, width int, t 
 	filledBar := strings.Repeat("█", filled)
 	emptyBar := strings.Repeat("░", barWidth-filled)
 
-	return labelStyle.Render(label+":") + filledStyle.Render(filledBar) + emptyStyle.Render(emptyBar)
+	return labelStyle.Render(prefix) + filledStyle.Render(filledBar) + emptyStyle.Render(emptyBar)
 }
 
 // formatDueIn formats remaining time until due date (bv-93)

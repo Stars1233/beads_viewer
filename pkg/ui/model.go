@@ -971,6 +971,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyRecipe(m.activeRecipe)
 		}
 
+		// Reload sprints (bv-161)
+		if m.beadsPath != "" {
+			beadsDir := filepath.Dir(m.beadsPath)
+			if loaded, err := loader.LoadSprintsFromFile(filepath.Join(beadsDir, loader.SprintsFileName)); err == nil {
+				m.sprints = loaded
+				// If we have a selected sprint, try to refresh it
+				if m.selectedSprint != nil {
+					found := false
+					for i := range m.sprints {
+						if m.sprints[i].ID == m.selectedSprint.ID {
+							m.selectedSprint = &m.sprints[i]
+							m.sprintViewText = m.renderSprintDashboard()
+							found = true
+							break
+						}
+					}
+					if !found {
+						m.selectedSprint = nil
+						m.sprintViewText = "Sprint not found"
+					}
+				}
+			}
+		}
+
 		// Keep semantic index current when enabled.
 		if m.semanticSearchEnabled && !m.semanticIndexBuilding {
 			m.semanticIndexBuilding = true

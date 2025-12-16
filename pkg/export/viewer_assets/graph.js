@@ -89,6 +89,119 @@ const LABEL_COLORS = [
 ];
 
 // ============================================================================
+// LAYOUT PRESETS (bv-97)
+// ============================================================================
+
+/**
+ * Layout presets for different visualization needs.
+ * Each preset configures force simulation parameters optimized for specific use cases.
+ */
+const LAYOUT_PRESETS = {
+    // Default force-directed layout - balanced readability
+    force: {
+        name: 'Force-Directed',
+        description: 'Standard physics-based layout with balanced spacing',
+        icon: '🔄',
+        config: {
+            linkDistance: 100,
+            chargeStrength: -150,
+            centerStrength: 0.05,
+            warmupTicks: 100,
+            cooldownTicks: 300
+        },
+        viewMode: VIEW_MODES.FORCE
+    },
+
+    // Compact layout for large graphs - tighter spacing, faster settling
+    compact: {
+        name: 'Compact DAG',
+        description: 'Tight layout for large graphs, emphasizes structure',
+        icon: '📦',
+        config: {
+            linkDistance: 50,
+            chargeStrength: -80,
+            centerStrength: 0.15,
+            warmupTicks: 50,
+            cooldownTicks: 150
+        },
+        viewMode: VIEW_MODES.HIERARCHY,
+        customForces: {
+            // Stronger vertical alignment for DAG appearance
+            yStrength: 0.4,
+            depthSpacing: 80
+        }
+    },
+
+    // Spread layout for clarity - more spacing, slower but cleaner
+    spread: {
+        name: 'Spread',
+        description: 'Maximum spacing for readability, ideal for exports',
+        icon: '🌟',
+        config: {
+            linkDistance: 180,
+            chargeStrength: -300,
+            centerStrength: 0.02,
+            warmupTicks: 150,
+            cooldownTicks: 500
+        },
+        viewMode: VIEW_MODES.FORCE
+    },
+
+    // Orthogonal-ish layout - grid-aligned, clean edges
+    orthogonal: {
+        name: 'Orthogonal',
+        description: 'Grid-aligned layout with cleaner edge routing',
+        icon: '📐',
+        config: {
+            linkDistance: 120,
+            chargeStrength: -100,
+            centerStrength: 0.1,
+            warmupTicks: 200,
+            cooldownTicks: 400
+        },
+        viewMode: VIEW_MODES.FORCE,
+        customForces: {
+            // Snap to grid forces
+            gridSize: 60,
+            gridStrength: 0.3
+        }
+    },
+
+    // Radial layout - emanates from center/selection
+    radial: {
+        name: 'Radial',
+        description: 'Circular layout from center or selected node',
+        icon: '🎯',
+        config: {
+            linkDistance: 80,
+            chargeStrength: -100,
+            centerStrength: 0.01,
+            warmupTicks: 100,
+            cooldownTicks: 300
+        },
+        viewMode: VIEW_MODES.RADIAL
+    },
+
+    // Cluster layout - groups by status
+    cluster: {
+        name: 'Status Clusters',
+        description: 'Groups nodes by status (open, in_progress, blocked)',
+        icon: '🔲',
+        config: {
+            linkDistance: 70,
+            chargeStrength: -60,
+            centerStrength: 0.05,
+            warmupTicks: 100,
+            cooldownTicks: 250
+        },
+        viewMode: VIEW_MODES.CLUSTER
+    }
+};
+
+// Default preset for exports
+const DEFAULT_EXPORT_PRESET = 'spread';
+
+// ============================================================================
 // STATE MANAGEMENT
 // ============================================================================
 
@@ -117,6 +230,7 @@ class GraphStore {
 
         // UI State
         this.viewMode = VIEW_MODES.FORCE;
+        this.currentPreset = 'force'; // Layout preset (bv-97)
         this.selectedNode = null;
         this.hoveredNode = null;
         this.highlightedNodes = new Set();
@@ -480,7 +594,10 @@ export async function initGraph(containerId, options = {}) {
         .d3Force('link', d3.forceLink()
             .distance(link => getLinkDistance(link))
             .strength(0.7))
-        .d3Force('center', d3.forceCenter()
+        .d3Force('center', d3.forceCenter())
+        .d3Force('x', d3.forceX()
+            .strength(store.config.centerStrength))
+        .d3Force('y', d3.forceY()
             .strength(store.config.centerStrength))
         .d3Force('collision', d3.forceCollide()
             .radius(node => getNodeSize(node) + 5))
@@ -1960,6 +2077,115 @@ function applyLabelGalaxyLayout() {
 }
 
 // ============================================================================
+// LAYOUT PRESETS API (bv-97)
+// ============================================================================
+
+/**
+ * Apply a layout preset by name.
+ * Presets configure force simulation parameters and optionally set view mode.
+ * @param {string} presetName - One of: 'force', 'compact', 'spread', 'orthogonal', 'radial', 'cluster'
+ * @returns {boolean} True if preset was applied successfully
+ */
+function applyPreset(presetName) {
+    const preset = LAYOUT_PRESETS[presetName];
+    if (!preset) {
+        console.warn(`[Graph] Unknown preset: ${presetName}. Available: ${Object.keys(LAYOUT_PRESETS).join(', ')}`);
+        return false;
+    }
+
+    console.log(`[Graph] Applying preset: ${preset.name} (${presetName})`);
+
+    // Update store config with preset values
+    Object.assign(store.config, preset.config);
+    store.currentPreset = presetName;
+
+    // Update view mode if specified
+    if (preset.viewMode && preset.viewMode !== store.viewMode) {
+        setViewMode(preset.viewMode);
+    }
+
+    // Apply custom forces if defined
+    if (preset.customForces) {
+        applyCustomForces(preset.customForces);
+    } else {
+        // Reset to standard force configuration
+        store.graph
+            .d3Force('link', d3.forceLink()
+                .id(d => d.id)
+                .distance(getLinkDistance))
+            .d3Force('charge', d3.forceManyBody()
+                .strength(store.config.chargeStrength))
+            .d3Force('center', d3.forceCenter())
+            .d3Force('x', d3.forceX()
+                .strength(store.config.centerStrength))
+            .d3Force('y', d3.forceY()
+                .strength(store.config.centerStrength))
+            .warmupTicks(store.config.warmupTicks)
+            .cooldownTicks(store.config.cooldownTicks)
+            .d3ReheatSimulation();
+    }
+
+    dispatchEvent('presetApplied', { preset: presetName, config: preset });
+    return true;
+}
+
+/**
+ * Apply custom forces for special presets like orthogonal
+ */
+function applyCustomForces(customForces) {
+    if (customForces.gridSize && customForces.gridStrength) {
+        // Orthogonal: snap to grid
+        const gridSize = customForces.gridSize;
+        const gridStrength = customForces.gridStrength;
+
+        store.graph
+            .d3Force('x', d3.forceX(node => {
+                // Snap to nearest grid column
+                return Math.round(node.x / gridSize) * gridSize;
+            }).strength(gridStrength))
+            .d3Force('y', d3.forceY(node => {
+                // Snap to nearest grid row, with depth offset
+                const depth = node.criticalDepth || 0;
+                return depth * gridSize + Math.round(node.y / gridSize) * gridSize;
+            }).strength(gridStrength))
+            .d3Force('charge', d3.forceManyBody().strength(store.config.chargeStrength))
+            .d3ReheatSimulation();
+    } else if (customForces.yStrength && customForces.depthSpacing) {
+        // Compact DAG: emphasize vertical hierarchy
+        store.graph
+            .d3Force('x', d3.forceX(0).strength(0.15))
+            .d3Force('y', d3.forceY(node => (node.criticalDepth || 0) * customForces.depthSpacing)
+                .strength(customForces.yStrength))
+            .d3Force('charge', d3.forceManyBody().strength(store.config.chargeStrength))
+            .d3ReheatSimulation();
+    }
+}
+
+/**
+ * Get available layout presets
+ * @returns {Object} Map of preset name -> preset info
+ */
+function getLayoutPresets() {
+    return { ...LAYOUT_PRESETS };
+}
+
+/**
+ * Get current preset name
+ * @returns {string} Current preset name
+ */
+function getCurrentPreset() {
+    return store.currentPreset;
+}
+
+/**
+ * Get the default export preset name
+ * @returns {string} Default preset for exports
+ */
+function getDefaultExportPreset() {
+    return DEFAULT_EXPORT_PRESET;
+}
+
+// ============================================================================
 // KEYBOARD SHORTCUTS
 // ============================================================================
 
@@ -2394,5 +2620,13 @@ export function getLabelClusterState() {
     };
 }
 
+// Export layout preset functions (bv-97)
+export {
+    applyPreset,
+    getLayoutPresets,
+    getCurrentPreset,
+    getDefaultExportPreset
+};
+
 // Export constants
-export { THEME, VIEW_MODES, TYPE_ICONS, LABEL_COLORS };
+export { THEME, VIEW_MODES, TYPE_ICONS, LABEL_COLORS, LAYOUT_PRESETS };
