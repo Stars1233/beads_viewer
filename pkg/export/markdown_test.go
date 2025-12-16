@@ -1011,6 +1011,33 @@ func TestGenerateMarkdown_LabelsWithPipe(t *testing.T) {
 	}
 }
 
+func TestGenerateMarkdown_AssigneeWithPipe(t *testing.T) {
+	now := time.Now()
+	issues := []model.Issue{
+		{
+			ID:        "PIPE-2",
+			Title:     "Issue with pipe in assignee",
+			Status:    model.StatusOpen,
+			CreatedAt: now,
+			UpdatedAt: now,
+			Assignee:  "alice|bob",
+		},
+	}
+
+	md, err := GenerateMarkdown(issues, "Pipe Assignee Test")
+	if err != nil {
+		t.Fatalf("GenerateMarkdown returned error: %v", err)
+	}
+
+	// Pipes in assignee should be escaped
+	if strings.Contains(md, "| @alice|bob") {
+		t.Error("Unescaped pipe in assignee would break markdown table")
+	}
+	if !strings.Contains(md, `alice\|bob`) {
+		t.Error("Expected escaped pipe in assignee")
+	}
+}
+
 // ============================================================================
 // Shell escape tests
 // ============================================================================

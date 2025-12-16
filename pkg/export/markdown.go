@@ -212,7 +212,8 @@ func GenerateMarkdown(issues []model.Issue, title string) (string, error) {
 		sb.WriteString(fmt.Sprintf("| **Priority** | %s |\n", getPriorityLabel(i.Priority)))
 		sb.WriteString(fmt.Sprintf("| **Status** | %s %s |\n", getStatusEmoji(string(i.Status)), i.Status))
 		if i.Assignee != "" {
-			sb.WriteString(fmt.Sprintf("| **Assignee** | @%s |\n", i.Assignee))
+			escapedAssignee := strings.ReplaceAll(i.Assignee, "|", "\\|")
+			sb.WriteString(fmt.Sprintf("| **Assignee** | @%s |\n", escapedAssignee))
 		}
 		sb.WriteString(fmt.Sprintf("| **Created** | %s |\n", i.CreatedAt.Format("2006-01-02 15:04")))
 		sb.WriteString(fmt.Sprintf("| **Updated** | %s |\n", i.UpdatedAt.Format("2006-01-02 15:04")))
