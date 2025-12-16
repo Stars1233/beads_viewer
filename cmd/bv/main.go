@@ -608,13 +608,17 @@ func main() {
 			CriticalPathScore: limitMaps(stats.CriticalPathScore(), mapLimit),
 		}
 
+		// Get top what-if deltas for issues with highest downstream impact (bv-83)
+		topWhatIfs := analyzer.TopWhatIfDeltas(10)
+
 		output := struct {
 			GeneratedAt    string                  `json:"generated_at"`
 			DataHash       string                  `json:"data_hash"`
 			AnalysisConfig analysis.AnalysisConfig `json:"analysis_config"`
 			Status         analysis.MetricStatus   `json:"status"`
 			analysis.Insights
-			FullStats interface{} `json:"full_stats"`
+			FullStats   interface{}             `json:"full_stats"`
+			TopWhatIfs  []analysis.WhatIfEntry  `json:"top_what_ifs,omitempty"` // Issues with highest downstream impact (bv-83)
 		}{
 			GeneratedAt:    time.Now().UTC().Format(time.RFC3339),
 			DataHash:       dataHash,
@@ -622,6 +626,7 @@ func main() {
 			Status:         stats.Status(),
 			Insights:       insights,
 			FullStats:      fullStats,
+			TopWhatIfs:     topWhatIfs,
 		}
 
 		encoder := json.NewEncoder(os.Stdout)
