@@ -136,6 +136,85 @@ const GRAPH_STATE = {
   ready: false,       // true when graph is loaded
 };
 
+// WASM support detection
+const WASM_STATUS = {
+  supported: null,    // null = not checked, true/false = checked
+  reason: null,       // Reason for failure if not supported
+  fallbackMode: false, // true when using pre-computed data only
+  features: {
+    basic: null,      // Basic WASM support
+    simd: null,       // SIMD support
+    threads: null,    // Thread support (SharedArrayBuffer)
+  },
+};
+
+/**
+ * Check WASM support in the browser
+ * @returns {Promise<{supported: boolean, reason: string|null, features: Object}>}
+ */
+async function checkWASMSupport() {
+  // Already checked
+  if (WASM_STATUS.supported !== null) {
+    return WASM_STATUS;
+  }
+
+  // Check basic WASM support
+  if (typeof WebAssembly !== 'object') {
+    WASM_STATUS.supported = false;
+    WASM_STATUS.reason = 'WebAssembly not available in this browser';
+    WASM_STATUS.fallbackMode = true;
+    return WASM_STATUS;
+  }
+
+  // Check WebAssembly APIs
+  try {
+    const testModule = new WebAssembly.Module(
+      new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00])
+    );
+    if (!(testModule instanceof WebAssembly.Module)) {
+      throw new Error('WebAssembly.Module validation failed');
+    }
+    WASM_STATUS.features.basic = true;
+  } catch (e) {
+    WASM_STATUS.supported = false;
+    WASM_STATUS.reason = `WebAssembly validation failed: ${e.message}`;
+    WASM_STATUS.fallbackMode = true;
+    WASM_STATUS.features.basic = false;
+    return WASM_STATUS;
+  }
+
+  // Check SharedArrayBuffer (needed for some WASM features)
+  WASM_STATUS.features.threads = typeof SharedArrayBuffer !== 'undefined';
+
+  // SIMD detection (optional, not required)
+  try {
+    WASM_STATUS.features.simd = WebAssembly.validate(new Uint8Array([
+      0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+      0x01, 0x05, 0x01, 0x60, 0x00, 0x01, 0x7b, 0x03,
+      0x02, 0x01, 0x00, 0x0a, 0x0a, 0x01, 0x08, 0x00,
+      0xfd, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x0b
+    ]));
+  } catch {
+    WASM_STATUS.features.simd = false;
+  }
+
+  WASM_STATUS.supported = true;
+  WASM_STATUS.reason = null;
+  return WASM_STATUS;
+}
+
+/**
+ * Enable fallback mode (use pre-computed data only)
+ */
+function enableFallbackMode(reason) {
+  WASM_STATUS.fallbackMode = true;
+  WASM_STATUS.reason = reason;
+  GRAPH_STATE.ready = false;
+  DIAGNOSTICS.graphWasm = false;
+  console.warn('[WASM] Fallback mode enabled:', reason);
+  showToast('Using pre-computed metrics only', 'warning');
+}
+
 /**
  * Initialize sql.js library
  */
@@ -442,6 +521,19 @@ function execScalar(sql, params = []) {
 async function initGraphEngine() {
   if (GRAPH_STATE.ready) return true;
 
+  // Check if we're already in fallback mode
+  if (WASM_STATUS.fallbackMode) {
+    console.log('[Graph] Fallback mode active, skipping WASM init');
+    return false;
+  }
+
+  // Check WASM support first
+  await checkWASMSupport();
+  if (!WASM_STATUS.supported) {
+    enableFallbackMode(WASM_STATUS.reason);
+    return false;
+  }
+
   try {
     // Dynamic import of the WASM module
     const wasmModule = await import('./vendor/bv_graph.js');
@@ -483,11 +575,12 @@ async function initGraphEngine() {
     }
 
     GRAPH_STATE.ready = true;
+    WASM_STATUS.fallbackMode = false;
     console.log(`[Graph] Loaded: ${GRAPH_STATE.graph.nodeCount()} nodes, ${GRAPH_STATE.graph.edgeCount()} edges`);
     return true;
   } catch (err) {
     console.warn('[Graph] WASM init failed:', err.message);
-    GRAPH_STATE.ready = false;
+    enableFallbackMode(`WASM load failed: ${err.message}`);
     return false;
   }
 }
@@ -1391,6 +1484,7 @@ function beadsApp() {
     globalError: null,       // Modal error from ERROR_STATE
     showDiagnostics: false,  // Toggle for diagnostics panel (press 'd')
     diagnostics: DIAGNOSTICS, // Reference to global diagnostics
+    wasmStatus: WASM_STATUS,  // WASM support status
     toasts: [],              // Toast notifications
     view: 'dashboard',
     mobileMenuOpen: false,   // Mobile hamburger menu state
@@ -2007,6 +2101,11 @@ window.beadsViewer = {
   getActionableIssues,
   getCycleBreakSuggestions,
   getTopKSet,
+
+  // WASM Fallback
+  WASM_STATUS,
+  checkWASMSupport,
+  enableFallbackMode,
 
   // Insights helpers
   getTopByBetweenness,

@@ -256,6 +256,27 @@
       </nav>
     </header>
 
+    <!-- WASM Fallback Mode Banner -->
+    <div x-show="wasmStatus.fallbackMode && !loading"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 -translate-y-2"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         class="bg-yellow-50 dark:bg-yellow-900/30 border-b border-yellow-200 dark:border-yellow-800">
+      <div class="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <svg class="w-4 h-4 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
+          <span class="text-sm text-yellow-800 dark:text-yellow-200">
+            <strong>Fallback Mode:</strong> Live graph calculations unavailable. Using pre-computed metrics.
+          </span>
+        </div>
+        <button @click="showDiagnostics = true" class="text-xs text-yellow-700 dark:text-yellow-300 hover:underline">
+          Details
+        </button>
+      </div>
+    </div>
+
     <!-- Loading state -->
     <div x-show="loading" class="flex flex-col items-center justify-center min-h-[60vh]">
       <div class="spinner mb-4"></div>
@@ -1360,7 +1381,34 @@
               <span :class="diagnostics.opfs === true ? 'text-green-500' : diagnostics.opfs === false ? 'text-red-500' : 'text-gray-400'"
                     x-text="diagnostics.opfs === true ? 'Available' : diagnostics.opfs === false ? 'Unavailable' : 'Unknown'"></span>
             </div>
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-gray-600 dark:text-gray-400">Fallback Mode</span>
+              <span :class="wasmStatus.fallbackMode ? 'text-yellow-500' : 'text-green-500'" x-text="wasmStatus.fallbackMode ? 'Active' : 'Off'"></span>
+            </div>
           </div>
+          <!-- WASM Features (collapsed) -->
+          <details class="mt-2 text-xs">
+            <summary class="cursor-pointer text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+              WASM Features
+            </summary>
+            <div class="mt-1 space-y-1 pl-2">
+              <div class="flex items-center justify-between">
+                <span class="text-gray-500 dark:text-gray-400">Basic</span>
+                <span :class="wasmStatus.features?.basic ? 'text-green-500' : 'text-red-500'" x-text="wasmStatus.features?.basic ? 'Yes' : 'No'"></span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-gray-500 dark:text-gray-400">SIMD</span>
+                <span :class="wasmStatus.features?.simd ? 'text-green-500' : 'text-gray-400'" x-text="wasmStatus.features?.simd ? 'Yes' : 'No'"></span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-gray-500 dark:text-gray-400">Threads</span>
+                <span :class="wasmStatus.features?.threads ? 'text-green-500' : 'text-gray-400'" x-text="wasmStatus.features?.threads ? 'Yes' : 'No'"></span>
+              </div>
+              <div x-show="wasmStatus.reason" class="text-red-500 dark:text-red-400 mt-1 break-words">
+                <span x-text="wasmStatus.reason"></span>
+              </div>
+            </div>
+          </details>
         </div>
 
         <!-- Database Info -->
