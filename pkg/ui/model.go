@@ -652,6 +652,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.analyzer = cachedAnalyzer.Analyzer
 		m.analysis = cachedAnalyzer.AnalyzeAsync()
 		cacheHit := cachedAnalyzer.WasCacheHit()
+		m.labelHealthCached = false
 
 		// Rebuild lookup map
 		m.issueMap = make(map[string]*model.Issue, len(newIssues))
@@ -1979,6 +1980,30 @@ func (m Model) renderLabelHealthDetail(lh analysis.LabelHealth) string {
 		return style.Render(filled + blank)
 	}
 
+	flowList := func(title string, items []labelCount, arrow string) string {
+		if len(items) == 0 {
+			return ""
+		}
+		var b strings.Builder
+		b.WriteString(labelStyle.Render(title))
+		b.WriteString("\n")
+		limit := len(items)
+		if limit > 6 {
+			limit = 6
+		}
+		for i := 0; i < limit; i++ {
+			lc := items[i]
+			line := fmt.Sprintf("  %s %-16s %3d", arrow, lc.Label, lc.Count)
+			b.WriteString(valStyle.Render(line))
+			b.WriteString("\n")
+		}
+		if len(items) > limit {
+			b.WriteString(valStyle.Render(fmt.Sprintf("  … +%d more", len(items)-limit)))
+			b.WriteString("\n")
+		}
+		return b.String()
+	}
+
 	boxStyle := t.Renderer.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(t.Primary).
@@ -2032,24 +2057,8 @@ func (m Model) renderLabelHealthDetail(lh analysis.LabelHealth) string {
 	if len(m.labelHealthDetailFlow.Incoming) > 0 || len(m.labelHealthDetailFlow.Outgoing) > 0 {
 		sb.WriteString(labelStyle.Render("Cross-label deps:"))
 		sb.WriteString("\n")
-		if len(m.labelHealthDetailFlow.Incoming) > 0 {
-			sb.WriteString(valStyle.Render("  Incoming:"))
-			sb.WriteString("\n")
-			for _, flow := range m.labelHealthDetailFlow.Incoming {
-				line := fmt.Sprintf("    %-18s %d issues", flow.Label, flow.Count)
-				sb.WriteString(valStyle.Render(line))
-				sb.WriteString("\n")
-			}
-		}
-		if len(m.labelHealthDetailFlow.Outgoing) > 0 {
-			sb.WriteString(valStyle.Render("  Outgoing:"))
-			sb.WriteString("\n")
-			for _, flow := range m.labelHealthDetailFlow.Outgoing {
-				line := fmt.Sprintf("    %-18s %d issues", flow.Label, flow.Count)
-				sb.WriteString(valStyle.Render(line))
-				sb.WriteString("\n")
-			}
-		}
+		sb.WriteString(flowList("  Incoming", m.labelHealthDetailFlow.Incoming, "←"))
+		sb.WriteString(flowList("  Outgoing", m.labelHealthDetailFlow.Outgoing, "→"))
 		sb.WriteString("\n")
 	}
 
@@ -3057,13 +3066,18 @@ func (m *Model) copyIssueToClipboard() {
 // Uses m.beadsPath which respects issues.jsonl (canonical per beads upstream)
 func (m *Model) openInEditor() {
 	// Use the configured beadsPath instead of hardcoded path
-	if m.beadsPath == "" {
-		m.statusMsg = "❌ No beads file configured"
+	beadsFile := m.beadsPath
+	if beadsFile == "" {
+		cwd, _ := os.Getwd()
+		if found, err := loader.FindJSONLPath(filepath.Join(cwd, ".beads")); err == nil {
+			beadsFile = found
+		}
+	}
+	if beadsFile == "" {
+		m.statusMsg = "❌ No .beads directory or beads.jsonl found"
 		m.statusIsError = true
 		return
 	}
-
-	beadsFile := m.beadsPath
 	if _, err := os.Stat(beadsFile); os.IsNotExist(err) {
 		m.statusMsg = fmt.Sprintf("❌ Beads file not found: %s", beadsFile)
 		m.statusIsError = true
