@@ -925,12 +925,14 @@ func (a *Analyzer) computePhase2(stats *GraphStats, config AnalysisConfig) {
 			prDone <- network.PageRank(a.g, 0.85, 1e-6)
 		}()
 
+		timer := time.NewTimer(config.PageRankTimeout)
 		select {
 		case pr := <-prDone:
+			timer.Stop()
 			for id, score := range pr {
 				localPageRank[a.nodeToID[id]] = score
 			}
-		case <-time.After(config.PageRankTimeout):
+		case <-timer.C:
 			// Timeout - use uniform distribution
 			uniform := 1.0 / float64(len(a.issueMap))
 			for id := range a.issueMap {
@@ -957,8 +959,10 @@ func (a *Analyzer) computePhase2(stats *GraphStats, config AnalysisConfig) {
 			}
 		}()
 
+		timer := time.NewTimer(config.BetweennessTimeout)
 		select {
 		case result := <-bwDone:
+			timer.Stop()
 			for id, score := range result.Scores {
 				localBetweenness[a.nodeToID[id]] = score
 			}
@@ -966,7 +970,7 @@ func (a *Analyzer) computePhase2(stats *GraphStats, config AnalysisConfig) {
 			if result.Mode == BetweennessApproximate {
 				stats.Config.BetweennessIsApproximate = true
 			}
-		case <-time.After(config.BetweennessTimeout):
+		case <-timer.C:
 			// Timeout - skip (leave empty)
 		}
 	}
@@ -985,13 +989,15 @@ func (a *Analyzer) computePhase2(stats *GraphStats, config AnalysisConfig) {
 			hitsDone <- network.HITS(a.g, 1e-3)
 		}()
 
+		timer := time.NewTimer(config.HITSTimeout)
 		select {
 		case hubAuth := <-hitsDone:
+			timer.Stop()
 			for id, ha := range hubAuth {
 				localHubs[a.nodeToID[id]] = ha.Hub
 				localAuthorities[a.nodeToID[id]] = ha.Authority
 			}
-		case <-time.After(config.HITSTimeout):
+		case <-timer.C:
 			// Timeout - skip
 		}
 	}
@@ -1026,8 +1032,10 @@ func (a *Analyzer) computePhase2(stats *GraphStats, config AnalysisConfig) {
 				cyclesDone <- topo.DirectedCyclesIn(a.g)
 			}()
 
+			timer := time.NewTimer(config.CyclesTimeout)
 			select {
 			case cycles := <-cyclesDone:
+				timer.Stop()
 				cyclesToProcess := cycles
 				truncated := false
 				if len(cyclesToProcess) > maxCycles {
@@ -1046,7 +1054,7 @@ func (a *Analyzer) computePhase2(stats *GraphStats, config AnalysisConfig) {
 				if truncated {
 					localCycles = append(localCycles, []string{"...", "CYCLES_TRUNCATED"})
 				}
-			case <-time.After(config.CyclesTimeout):
+			case <-timer.C:
 				localCycles = [][]string{{"CYCLE_DETECTION_TIMEOUT"}}
 			}
 		}
