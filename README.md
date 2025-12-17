@@ -83,6 +83,7 @@ Don't just read the title. `bv` gives you the full picture:
 *   **Copy:** Press `C` to copy the selected issue as formatted Markdown to your clipboard.
 *   **Edit:** Press `O` to open the `.beads/beads.jsonl` file in your preferred GUI editor.
 *   **Time-Travel:** Press `t` to compare against any git revision, or `T` for quick HEAD~5 comparison. Combined with History view (`h`), you can navigate to any commit and see exactly what changed.
+
 ### 🔌 Automation Hooks
 Configure pre- and post-export hooks in `.bv/hooks.yaml` to run validations, notifications, or uploads. Defaults: pre-export hooks fail fast on errors (`on_error: fail`), post-export hooks log and continue (`on_error: continue`). Empty commands are ignored with a warning for safety. Hook env includes `BV_EXPORT_PATH`, `BV_EXPORT_FORMAT`, `BV_ISSUE_COUNT`, `BV_TIMESTAMP`, plus any custom `env` entries.
 
@@ -2362,11 +2363,6 @@ bv has a comprehensive built-in help system:
 - Workflows: AI agent integration, triage, planning
 - Progress is automatically saved—resume where you left off
 
-**Context Help** (`~` tilde) - View-specific quick reference:
-- Compact modal showing only relevant shortcuts
-- Different content for each view (List, Board, Graph, Insights, History)
-- Perfect for quick reminders without leaving your workflow
-
 ### Keyboard Control Map
 
 | Context | Key | Action |
@@ -2410,7 +2406,6 @@ bv has a comprehensive built-in help system:
 | | `O` | Open in Editor |
 | **Help & Learning** | `?` | Toggle Help Overlay (keyboard shortcuts) |
 | | `` ` `` | Open Interactive Tutorial (progress saved) |
-| | `~` | Context-Specific Quick Reference |
 | **Global** | `;` | Toggle Shortcuts Sidebar |
 | | `!` | Toggle **Alerts Panel** (proactive warnings) |
 | | `'` | Recipe Picker |
