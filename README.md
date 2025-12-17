@@ -1629,11 +1629,21 @@ bv --preview-pages ./bv-pages                   # Serve at localhost:9000
 
 ### Features
 
-- **Full-Text Search**: SQLite FTS5 enables instant search over titles/descriptions
+- **Full-Text Search**: SQLite FTS5 powers instant search across all issue titles and descriptions. Results appear as you type—no server required. The database is embedded directly in the static bundle.
 - **Interactive Graph**: Visualize dependencies (powered by D3.js)
 - **Triage View**: Same recommendations as `--robot-triage`
 - **Offline Support**: Works without network after initial load
 - **Mobile Responsive**: Adapts to phone/tablet screens
+
+### Technical Notes
+
+The static export uses a pure-Go SQLite implementation ([modernc.org/sqlite](https://modernc.org/sqlite)), which means:
+
+- **No C compiler required**: The export works on any system without CGO or build tools
+- **Cross-platform**: Generate bundles on any OS for deployment anywhere
+- **FTS5 built-in**: Full-text search is available out of the box—no special configuration
+
+The generated `beads.sqlite3` file contains a pre-indexed FTS5 table, enabling sub-millisecond search across thousands of issues.
 
 ### Deployment Options
 
