@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Dicklesworthstone/beads_viewer/pkg/correlation"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -1341,7 +1342,7 @@ func (h *HistoryModel) renderBeadLine(idx int, hist correlation.BeadHistory, wid
 	return line
 }
 
-// renderDetailPanel renders the right panel with commit details
+// renderDetailPanel renders the right panel with commit details (bv-9fk1 enhanced)
 func (h *HistoryModel) renderDetailPanel(width, height int) string {
 	t := h.theme
 
@@ -1368,8 +1369,15 @@ func (h *HistoryModel) renderDetailPanel(width, height int) string {
 		Foreground(t.Primary)
 	header := headerStyle.Render("COMMIT DETAILS")
 
-	// Bead info
-	beadInfo := fmt.Sprintf("%s: %s", hist.BeadID, hist.Title)
+	// Bead info with status indicator
+	statusIcon := "○"
+	switch hist.Status {
+	case "closed":
+		statusIcon = "✓"
+	case "in_progress":
+		statusIcon = "●"
+	}
+	beadInfo := fmt.Sprintf("%s %s: %s", statusIcon, hist.BeadID, hist.Title)
 	if width > 10 && len(beadInfo) > width-6 {
 		beadInfo = beadInfo[:width-7] + "…"
 	} else if width <= 10 && len(beadInfo) > 5 {
@@ -1386,6 +1394,28 @@ func (h *HistoryModel) renderDetailPanel(width, height int) string {
 	}
 	lines = append(lines, strings.Repeat("─", detailSepWidth))
 
+	// Calculate aggregate stats for footer (bv-9fk1)
+	var totalFiles, totalAdd, totalDel int
+	var totalConf float64
+	uniqueFiles := make(map[string]bool)
+	for _, commit := range hist.Commits {
+		totalConf += commit.Confidence
+		for _, f := range commit.Files {
+			uniqueFiles[f.Path] = true
+			totalAdd += f.Insertions
+			totalDel += f.Deletions
+		}
+	}
+	totalFiles = len(uniqueFiles)
+	avgConf := 0.0
+	if len(hist.Commits) > 0 {
+		avgConf = totalConf / float64(len(hist.Commits))
+	}
+
+	// Reserve space for footer (3 lines: separator + stats + hint)
+	footerHeight := 3
+	contentHeight := height - 2 - footerHeight - 3 // -3 for header lines
+
 	// Render commits
 	for i, commit := range hist.Commits {
 		isSelected := i == h.selectedCommit && h.focused == historyFocusDetail
@@ -1396,24 +1426,55 @@ func (h *HistoryModel) renderDetailPanel(width, height int) string {
 		}
 	}
 
-	// Pad with empty lines
-	for len(lines) < height-2 {
+	// Pad content to push footer to bottom
+	for len(lines) < contentHeight+3 { // +3 for header lines
 		lines = append(lines, "")
 	}
 
-	// Truncate if too many lines
-	if len(lines) > height-2 {
-		lines = lines[:height-2]
+	// Truncate content if too long (before adding footer)
+	if len(lines) > contentHeight+3 {
+		lines = lines[:contentHeight+3]
 	}
+
+	// === STATS FOOTER (bv-9fk1) ===
+	lines = append(lines, strings.Repeat("─", detailSepWidth))
+
+	// Stats line
+	statsStyle := t.Renderer.NewStyle().Foreground(t.Muted)
+	confStyle := t.Renderer.NewStyle()
+	switch {
+	case avgConf >= 0.8:
+		confStyle = confStyle.Foreground(t.Open)
+	case avgConf >= 0.5:
+		confStyle = confStyle.Foreground(t.Secondary)
+	default:
+		confStyle = confStyle.Foreground(t.Muted)
+	}
+
+	var statsItems []string
+	statsItems = append(statsItems, fmt.Sprintf("%d commits", len(hist.Commits)))
+	statsItems = append(statsItems, fmt.Sprintf("%d files", totalFiles))
+	if totalAdd > 0 || totalDel > 0 {
+		addStr := t.Renderer.NewStyle().Foreground(t.Open).Render(fmt.Sprintf("+%d", totalAdd))
+		delStr := t.Renderer.NewStyle().Foreground(t.Closed).Render(fmt.Sprintf("-%d", totalDel))
+		statsItems = append(statsItems, addStr+"/"+delStr)
+	}
+	statsItems = append(statsItems, confStyle.Render(fmt.Sprintf("%.0f%% avg", avgConf*100)))
+
+	statsLine := statsStyle.Render(strings.Join(statsItems, " • "))
+	lines = append(lines, statsLine)
+
+	// Navigation hint
+	hintStyle := t.Renderer.NewStyle().Foreground(t.Muted).Italic(true)
+	lines = append(lines, hintStyle.Render("J/K:commits  y:copy SHA"))
 
 	content := strings.Join(lines, "\n")
 	return panelStyle.Render(content)
 }
 
-// renderCommitDetail renders details for a single commit
+// renderCommitDetail renders details for a single commit (bv-9fk1 enhanced)
 func (h *HistoryModel) renderCommitDetail(commit correlation.CorrelatedCommit, width int, selected bool) []string {
 	t := h.theme
-
 	var lines []string
 
 	// Selection indicator
@@ -1422,20 +1483,95 @@ func (h *HistoryModel) renderCommitDetail(commit correlation.CorrelatedCommit, w
 		indicator = "▸ "
 	}
 
-	// SHA and message
+	// === COMMIT HEADER ===
+	// Type icon + SHA + relative time
+	typeIcon := commitTypeIndicator(commit.Message)
+	if typeIcon != "" {
+		typeIcon += " "
+	}
+
 	shaStyle := t.Renderer.NewStyle().Foreground(t.Primary)
 	if selected {
 		shaStyle = shaStyle.Bold(true)
 	}
-	shaLine := fmt.Sprintf("%s%s %s", indicator, shaStyle.Render(commit.ShortSHA), truncate(commit.Message, width-15))
-	lines = append(lines, shaLine)
 
-	// Author and date
+	relTime := relativeTime(commit.Timestamp)
+	relTimeStyle := t.Renderer.NewStyle().Foreground(t.Muted).Italic(true)
+
+	// Header line: [indicator] [icon] SHA (relative time)
+	headerLine := fmt.Sprintf("%s%s%s %s",
+		indicator,
+		typeIcon,
+		shaStyle.Render(commit.ShortSHA),
+		relTimeStyle.Render("("+relTime+")"),
+	)
+	lines = append(lines, headerLine)
+
+	// === AUTHOR LINE ===
+	// [Initials] Author Name • absolute date
+	initials := authorInitials(commit.Author)
+	initialsStyle := t.Renderer.NewStyle().
+		Foreground(t.Base.GetForeground()).
+		Background(t.Muted).
+		Padding(0, 1).
+		Bold(true)
 	authorStyle := t.Renderer.NewStyle().Foreground(t.Secondary)
-	authorLine := fmt.Sprintf("    %s • %s", authorStyle.Render(commit.Author), commit.Timestamp.Format("2006-01-02 15:04"))
+	dateStr := commit.Timestamp.Format("2006-01-02 15:04")
+
+	authorLine := fmt.Sprintf("    %s %s • %s",
+		initialsStyle.Render(initials),
+		authorStyle.Render(commit.Author),
+		dateStr,
+	)
+	if width > 10 && len(authorLine) > width-2 {
+		// Truncate author name if needed
+		maxAuthor := width - 30
+		if maxAuthor < 10 {
+			maxAuthor = 10
+		}
+		authorName := commit.Author
+		if len(authorName) > maxAuthor {
+			authorName = authorName[:maxAuthor-1] + "…"
+		}
+		authorLine = fmt.Sprintf("    %s %s • %s",
+			initialsStyle.Render(initials),
+			authorStyle.Render(authorName),
+			dateStr,
+		)
+	}
 	lines = append(lines, authorLine)
 
-	// Confidence and method
+	// === MESSAGE ===
+	// Parse conventional commit for better display
+	cc := parseConventionalCommit(commit.Message)
+
+	if cc.IsConventional {
+		// Show type badge + subject
+		typeBadgeStyle := t.Renderer.NewStyle().
+			Foreground(t.Primary).
+			Bold(true)
+		var scopeStr string
+		if cc.Scope != "" {
+			scopeStr = "(" + cc.Scope + ")"
+		}
+		breakingStr := ""
+		if cc.Breaking {
+			breakingStr = t.Renderer.NewStyle().Foreground(t.Closed).Bold(true).Render("!")
+		}
+		typeLine := fmt.Sprintf("    %s%s%s: %s",
+			typeBadgeStyle.Render(cc.Type),
+			scopeStr,
+			breakingStr,
+			truncate(cc.Subject, width-len(cc.Type)-len(scopeStr)-10),
+		)
+		lines = append(lines, typeLine)
+	} else {
+		// Non-conventional: just show the message
+		msgLine := fmt.Sprintf("    %s", truncate(cc.Subject, width-6))
+		lines = append(lines, msgLine)
+	}
+
+	// === CONFIDENCE & METHOD ===
 	confStyle := t.Renderer.NewStyle()
 	switch {
 	case commit.Confidence >= 0.8:
@@ -1448,28 +1584,80 @@ func (h *HistoryModel) renderCommitDetail(commit correlation.CorrelatedCommit, w
 
 	methodStr := methodLabel(commit.Method)
 	confLine := fmt.Sprintf("    %s %s",
-		confStyle.Render(fmt.Sprintf("%.0f%%", commit.Confidence*100)),
-		methodStr,
+		confStyle.Render(fmt.Sprintf("%.0f%% confidence", commit.Confidence*100)),
+		t.Renderer.NewStyle().Foreground(t.Muted).Render(methodStr),
 	)
 	lines = append(lines, confLine)
 
-	// Files (abbreviated)
+	// === FILE CHANGES ===
 	if len(commit.Files) > 0 {
-		fileCount := fmt.Sprintf("    %d files changed", len(commit.Files))
-		if len(commit.Files) <= 3 {
-			var filenames []string
-			for _, f := range commit.Files {
-				filenames = append(filenames, f.Path)
+		// File summary header
+		var totalAdd, totalDel int
+		for _, f := range commit.Files {
+			totalAdd += f.Insertions
+			totalDel += f.Deletions
+		}
+
+		fileSummary := fmt.Sprintf("    %d file(s)",
+			len(commit.Files),
+		)
+		if totalAdd > 0 || totalDel > 0 {
+			addStyle := t.Renderer.NewStyle().Foreground(t.Open)
+			delStyle := t.Renderer.NewStyle().Foreground(t.Closed)
+			fileSummary += fmt.Sprintf(" %s %s",
+				addStyle.Render(fmt.Sprintf("+%d", totalAdd)),
+				delStyle.Render(fmt.Sprintf("-%d", totalDel)),
+			)
+		}
+		lines = append(lines, fileSummary)
+
+		// Group files by directory and show (max 5 files)
+		groups := groupFilesByDirectory(commit.Files)
+		fileCount := 0
+		maxFiles := 5
+
+		for _, group := range groups {
+			if fileCount >= maxFiles {
+				moreCount := len(commit.Files) - fileCount
+				moreStyle := t.Renderer.NewStyle().Foreground(t.Muted).Italic(true)
+				lines = append(lines, moreStyle.Render(fmt.Sprintf("      +%d more files...", moreCount)))
+				break
 			}
-			fileCount = fmt.Sprintf("    %s", strings.Join(filenames, ", "))
-			if width > 6 && len(fileCount) > width-2 {
-				fileCount = fileCount[:width-3] + "…"
-			} else if width <= 6 && len(fileCount) > 5 {
-				fileCount = fileCount[:4] + "…"
+
+			for _, f := range group.Files {
+				if fileCount >= maxFiles {
+					break
+				}
+
+				// Get just filename from path
+				filename := f.Path
+				lastSlash := strings.LastIndex(f.Path, "/")
+				if lastSlash >= 0 && lastSlash < len(f.Path)-1 {
+					filename = f.Path[lastSlash+1:]
+				}
+
+				// Action icon and color
+				actionIcon := fileActionIcon(f.Action)
+				actionColor := fileActionColor(f.Action, t)
+				actionStyle := t.Renderer.NewStyle().Foreground(actionColor)
+
+				// +/- stats if available
+				statsStr := ""
+				if f.Insertions > 0 || f.Deletions > 0 {
+					addStr := t.Renderer.NewStyle().Foreground(t.Open).Render(fmt.Sprintf("+%d", f.Insertions))
+					delStr := t.Renderer.NewStyle().Foreground(t.Closed).Render(fmt.Sprintf("-%d", f.Deletions))
+					statsStr = fmt.Sprintf(" %s/%s", addStr, delStr)
+				}
+
+				fileLine := fmt.Sprintf("      %s %s%s",
+					actionStyle.Render(actionIcon),
+					truncate(filename, width-15),
+					statsStr,
+				)
+				lines = append(lines, fileLine)
+				fileCount++
 			}
 		}
-		fileStyle := t.Renderer.NewStyle().Foreground(t.Muted)
-		lines = append(lines, fileStyle.Render(fileCount))
 	}
 
 	return lines
@@ -1489,6 +1677,233 @@ func methodLabel(method correlation.CorrelationMethod) string {
 		return "(temporal)"
 	default:
 		return ""
+	}
+}
+
+// Commit detail enhancement helpers (bv-9fk1)
+
+// authorInitials extracts initials from an author name (e.g., "John Doe" -> "JD")
+func authorInitials(name string) string {
+	if name == "" {
+		return "??"
+	}
+	parts := strings.Fields(name)
+	if len(parts) == 0 {
+		return "??"
+	}
+	if len(parts) == 1 {
+		// Single name - take first two chars
+		if len(parts[0]) >= 2 {
+			return strings.ToUpper(parts[0][:2])
+		}
+		return strings.ToUpper(parts[0])
+	}
+	// Multi-part name - first char of first and last parts
+	first := string([]rune(parts[0])[0])
+	last := string([]rune(parts[len(parts)-1])[0])
+	return strings.ToUpper(first + last)
+}
+
+// relativeTime formats a time as a relative string (e.g., "2d ago", "3h ago")
+func relativeTime(t time.Time) string {
+	now := time.Now()
+	diff := now.Sub(t)
+
+	if diff < 0 {
+		return "in future"
+	}
+
+	switch {
+	case diff < time.Minute:
+		return "just now"
+	case diff < time.Hour:
+		mins := int(diff.Minutes())
+		return fmt.Sprintf("%dm ago", mins)
+	case diff < 24*time.Hour:
+		hours := int(diff.Hours())
+		return fmt.Sprintf("%dh ago", hours)
+	case diff < 7*24*time.Hour:
+		days := int(diff.Hours() / 24)
+		return fmt.Sprintf("%dd ago", days)
+	case diff < 30*24*time.Hour:
+		weeks := int(diff.Hours() / 24 / 7)
+		return fmt.Sprintf("%dw ago", weeks)
+	case diff < 365*24*time.Hour:
+		months := int(diff.Hours() / 24 / 30)
+		return fmt.Sprintf("%dmo ago", months)
+	default:
+		years := int(diff.Hours() / 24 / 365)
+		return fmt.Sprintf("%dy ago", years)
+	}
+}
+
+// conventionalCommit holds parsed conventional commit info
+type conventionalCommit struct {
+	Type        string // feat, fix, docs, etc.
+	Scope       string // optional scope in parentheses
+	Breaking    bool   // has ! after type/scope
+	Subject     string // the description after the colon
+	Body        string // everything after first line
+	IsConventional bool // true if successfully parsed
+}
+
+// parseConventionalCommit parses a conventional commit message
+func parseConventionalCommit(msg string) conventionalCommit {
+	result := conventionalCommit{IsConventional: false}
+
+	lines := strings.SplitN(msg, "\n", 2)
+	firstLine := strings.TrimSpace(lines[0])
+	if len(lines) > 1 {
+		result.Body = strings.TrimSpace(lines[1])
+	}
+
+	// Match pattern: type(scope)!: description or type!: description or type: description
+	// Common types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+	patterns := []string{
+		"feat", "fix", "docs", "style", "refactor", "perf", "test",
+		"build", "ci", "chore", "revert", "wip",
+	}
+
+	for _, prefix := range patterns {
+		if strings.HasPrefix(strings.ToLower(firstLine), prefix) {
+			rest := firstLine[len(prefix):]
+
+			// Check for scope
+			if strings.HasPrefix(rest, "(") {
+				endParen := strings.Index(rest, ")")
+				if endParen > 0 {
+					result.Scope = rest[1:endParen]
+					rest = rest[endParen+1:]
+				}
+			}
+
+			// Check for breaking change indicator
+			if strings.HasPrefix(rest, "!") {
+				result.Breaking = true
+				rest = rest[1:]
+			}
+
+			// Check for colon
+			if strings.HasPrefix(rest, ":") {
+				result.Type = prefix
+				result.Subject = strings.TrimSpace(rest[1:])
+				result.IsConventional = true
+				return result
+			}
+		}
+	}
+
+	// Not conventional - use whole first line as subject
+	result.Subject = firstLine
+	return result
+}
+
+// commitTypeIndicator returns an icon/badge for commit type
+func commitTypeIndicator(msg string) string {
+	lowerMsg := strings.ToLower(msg)
+
+	// Check for merge commit
+	if strings.HasPrefix(lowerMsg, "merge ") {
+		return "⊕" // merge symbol
+	}
+
+	// Check for revert
+	if strings.HasPrefix(lowerMsg, "revert ") {
+		return "↩" // revert symbol
+	}
+
+	// Check conventional commit type
+	cc := parseConventionalCommit(msg)
+	if cc.IsConventional {
+		switch cc.Type {
+		case "feat":
+			return "✨" // sparkles for feature
+		case "fix":
+			return "🐛" // bug for fix
+		case "docs":
+			return "📝" // docs
+		case "refactor":
+			return "♻" // refactor
+		case "perf":
+			return "⚡" // performance
+		case "test":
+			return "🧪" // test
+		case "chore":
+			return "🔧" // chore
+		case "ci":
+			return "🔄" // CI
+		case "build":
+			return "📦" // build
+		case "style":
+			return "💄" // style
+		}
+	}
+
+	return "" // no special indicator
+}
+
+// filesByDirectory groups files by their parent directory
+type fileGroup struct {
+	Dir   string
+	Files []correlation.FileChange
+}
+
+func groupFilesByDirectory(files []correlation.FileChange) []fileGroup {
+	dirMap := make(map[string][]correlation.FileChange)
+	var dirOrder []string
+
+	for _, f := range files {
+		dir := "."
+		lastSlash := strings.LastIndex(f.Path, "/")
+		if lastSlash >= 0 {
+			dir = f.Path[:lastSlash]
+		}
+
+		if _, exists := dirMap[dir]; !exists {
+			dirOrder = append(dirOrder, dir)
+		}
+		dirMap[dir] = append(dirMap[dir], f)
+	}
+
+	var groups []fileGroup
+	for _, dir := range dirOrder {
+		groups = append(groups, fileGroup{
+			Dir:   dir,
+			Files: dirMap[dir],
+		})
+	}
+	return groups
+}
+
+// fileActionColor returns the appropriate theme color for a file action
+func fileActionColor(action string, t Theme) lipgloss.TerminalColor {
+	switch action {
+	case "A":
+		return t.Open // green for added
+	case "D":
+		return t.Closed // red for deleted
+	case "M":
+		return t.InProgress // yellow/orange for modified
+	case "R":
+		return t.Secondary // neutral for renamed
+	default:
+		return t.Muted
+	}
+}
+
+// fileActionIcon returns an icon for file action
+func fileActionIcon(action string) string {
+	switch action {
+	case "A":
+		return "+"
+	case "D":
+		return "-"
+	case "M":
+		return "~"
+	case "R":
+		return "→"
+	default:
+		return "?"
 	}
 }
 
