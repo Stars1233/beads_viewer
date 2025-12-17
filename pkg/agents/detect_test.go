@@ -257,3 +257,76 @@ func TestGetPreferredAgentFilePath(t *testing.T) {
 		t.Errorf("GetPreferredAgentFilePath() = %q, want %q", path, expected)
 	}
 }
+
+func TestDetectAgentFileWithLegacyBlurb(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Legacy blurb content (pre-v1 format without HTML markers)
+	legacyContent := `# Project AGENTS.md
+
+### Using bv as an AI sidecar
+
+bv can help AI agents with task management.
+
+**Available robot flags**:
+- ` + "`--robot-insights`" + ` - Deep analysis
+- ` + "`--robot-plan`" + ` - Generate plans
+
+bv already computes the hard parts for you.
+`
+
+	agentsPath := filepath.Join(tmpDir, "AGENTS.md")
+	err := os.WriteFile(agentsPath, []byte(legacyContent), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	detection := DetectAgentFile(tmpDir)
+	if !detection.Found() {
+		t.Error("Expected to find AGENTS.md")
+	}
+	if !detection.HasBlurb {
+		t.Error("Expected HasBlurb to be true for legacy content")
+	}
+	if !detection.HasLegacyBlurb {
+		t.Error("Expected HasLegacyBlurb to be true")
+	}
+	if !detection.NeedsUpgrade() {
+		t.Error("Expected NeedsUpgrade() to return true for legacy blurb")
+	}
+}
+
+func TestDetectAgentFileNotFalsePositive(t *testing.T) {
+	// Regression test: content that references robot flags but is NOT the legacy blurb
+	// should NOT be detected as legacy (missing "bv already computes the hard parts")
+	tmpDir := t.TempDir()
+
+	// This mimics current AGENTS.md which has header + robot flags but NOT the legacy end phrase
+	notLegacyContent := `### Using bv as an AI sidecar
+
+bv is a graph-aware triage engine for Beads projects.
+
+**Commands:**
+- ` + "`--robot-insights`" + ` - Full metrics
+- ` + "`--robot-plan`" + ` - Parallel execution tracks
+
+Use bv instead of parsing beads.jsonl.
+`
+
+	agentsPath := filepath.Join(tmpDir, "AGENTS.md")
+	err := os.WriteFile(agentsPath, []byte(notLegacyContent), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	detection := DetectAgentFile(tmpDir)
+	if !detection.Found() {
+		t.Error("Expected to find AGENTS.md")
+	}
+	if detection.HasLegacyBlurb {
+		t.Error("Expected HasLegacyBlurb to be false - this is NOT legacy content")
+	}
+	if detection.HasBlurb {
+		t.Error("Expected HasBlurb to be false - no current or legacy blurb markers")
+	}
+}
