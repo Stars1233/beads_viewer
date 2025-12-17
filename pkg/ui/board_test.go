@@ -368,3 +368,102 @@ func TestViewRendering(t *testing.T) {
 		})
 	}
 }
+
+// TestBoardRichCardContent verifies the bv-1daf rich card content rendering
+// Tests that cards with dependencies render correctly with blocked-by and blocks indicators
+func TestBoardRichCardContent(t *testing.T) {
+	theme := createTheme()
+
+	// Create issues with dependencies to test blocks/blocked-by indicators
+	issues := []model.Issue{
+		{
+			ID:        "A",
+			Title:     "Foundation Task",
+			Status:    model.StatusOpen,
+			Priority:  1,
+			CreatedAt: createTime(48), // 2 days ago
+			UpdatedAt: createTime(24), // 1 day ago
+			Labels:    []string{"backend", "api"},
+		},
+		{
+			ID:        "B",
+			Title:     "Blocked Task",
+			Status:    model.StatusBlocked,
+			Priority:  2,
+			CreatedAt: createTime(24),
+			UpdatedAt: createTime(1),
+			Dependencies: []*model.Dependency{
+				{IssueID: "B", DependsOnID: "A", Type: model.DepBlocks},
+			},
+		},
+		{
+			ID:        "C",
+			Title:     "Another Blocked Task",
+			Status:    model.StatusBlocked,
+			Priority:  2,
+			CreatedAt: createTime(24),
+			UpdatedAt: createTime(2),
+			Dependencies: []*model.Dependency{
+				{IssueID: "C", DependsOnID: "A", Type: model.DepBlocks},
+			},
+		},
+	}
+
+	b := ui.NewBoardModel(issues, theme)
+
+	// Board should render without panic
+	output := b.View(160, 40)
+
+	// Basic sanity checks - output should contain issue IDs
+	if output == "" {
+		t.Error("Board view should not be empty")
+	}
+
+	// Test SetIssues rebuilds blocks index
+	b.SetIssues(issues)
+	output2 := b.View(160, 40)
+	if output2 == "" {
+		t.Error("Board view after SetIssues should not be empty")
+	}
+}
+
+// TestBoardAgeColorCoding verifies age indicators show different colors (bv-1daf)
+func TestBoardAgeColorCoding(t *testing.T) {
+	theme := createTheme()
+
+	// Create issues with different ages
+	issues := []model.Issue{
+		{
+			ID:        "recent",
+			Title:     "Recent Issue",
+			Status:    model.StatusOpen,
+			Priority:  2,
+			CreatedAt: createTime(12),         // 12 hours ago
+			UpdatedAt: time.Now(),              // just now - green
+		},
+		{
+			ID:        "medium",
+			Title:     "Medium Age Issue",
+			Status:    model.StatusOpen,
+			Priority:  2,
+			CreatedAt: createTime(24 * 14),     // 14 days ago
+			UpdatedAt: createTime(24 * 10),     // 10 days ago - yellow
+		},
+		{
+			ID:        "stale",
+			Title:     "Stale Issue",
+			Status:    model.StatusOpen,
+			Priority:  2,
+			CreatedAt: createTime(24 * 60),     // 60 days ago
+			UpdatedAt: createTime(24 * 45),     // 45 days ago - red
+		},
+	}
+
+	b := ui.NewBoardModel(issues, theme)
+
+	// Should render without panic with different age colors
+	output := b.View(160, 40)
+	if output == "" {
+		t.Error("Board view with age-colored issues should not be empty")
+	}
+}

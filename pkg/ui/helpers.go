@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Dicklesworthstone/beads_viewer/pkg/model"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 )
 
@@ -248,5 +249,53 @@ func GetPriorityIcon(priority int) string {
 		return "💤" // Backlog
 	default:
 		return "  "
+	}
+}
+
+// GetPriorityLabel returns a compact text label for priority (P0, P1, etc.)
+func GetPriorityLabel(priority int) string {
+	if priority >= 0 && priority <= 4 {
+		return fmt.Sprintf("P%d", priority)
+	}
+	return "P?"
+}
+
+// GetAgeDays returns the number of days since the given time
+func GetAgeDays(t time.Time) int {
+	if t.IsZero() {
+		return 0
+	}
+	return int(time.Since(t).Hours() / 24)
+}
+
+// GetAgeColor returns a color based on staleness:
+// green (<7 days), yellow (7-30 days), red (>30 days)
+func GetAgeColor(t time.Time) lipgloss.Color {
+	days := GetAgeDays(t)
+	switch {
+	case days < 7:
+		return ColorSuccess // Green - fresh
+	case days < 30:
+		return ColorWarning // Yellow/Orange - aging
+	default:
+		return ColorDanger // Red - stale
+	}
+}
+
+// FormatAgeBadge returns a compact age string with timer emoji (e.g., "3d ⏱")
+func FormatAgeBadge(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	days := GetAgeDays(t)
+	switch {
+	case days == 0:
+		return "<1d"
+	case days < 7:
+		return fmt.Sprintf("%dd", days)
+	case days < 30:
+		return fmt.Sprintf("%dw", days/7)
+	default:
+		return fmt.Sprintf("%dmo", days/30)
 	}
 }

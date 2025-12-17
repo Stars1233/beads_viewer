@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Dicklesworthstone/beads_viewer/pkg/model"
 
@@ -19,6 +20,9 @@ type BoardModel struct {
 	focusedCol   int    // Index into activeColIdx
 	selectedRow  [4]int // Store selection for each column
 	theme        Theme
+
+	// Reverse dependency index: maps issue ID -> slice of issue IDs it blocks (bv-1daf)
+	blocksIndex map[string][]string
 
 	// Detail panel (bv-r6kh)
 	showDetail   bool
@@ -66,6 +70,21 @@ func (b *BoardModel) updateActiveColumns() {
 	}
 }
 
+// buildBlocksIndex creates a reverse dependency map: for each issue that is depended on,
+// it stores the list of issue IDs that depend on it (bv-1daf)
+func buildBlocksIndex(issues []model.Issue) map[string][]string {
+	index := make(map[string][]string)
+	for _, issue := range issues {
+		for _, dep := range issue.Dependencies {
+			if dep != nil && dep.Type.IsBlocking() {
+				// dep.DependsOnID blocks issue.ID
+				index[dep.DependsOnID] = append(index[dep.DependsOnID], issue.ID)
+			}
+		}
+	}
+	return index
+}
+
 // NewBoardModel creates a new Kanban board from the given issues
 func NewBoardModel(issues []model.Issue, theme Theme) BoardModel {
 	var cols [4][]model.Issue
@@ -97,11 +116,12 @@ func NewBoardModel(issues []model.Issue, theme Theme) BoardModel {
 	)
 
 	b := BoardModel{
-		columns:    cols,
-		focusedCol: 0,
-		theme:      theme,
-		detailVP:   viewport.New(40, 20),
-		mdRenderer: mdRenderer,
+		columns:     cols,
+		focusedCol:  0,
+		theme:       theme,
+		blocksIndex: buildBlocksIndex(issues),
+		detailVP:    viewport.New(40, 20),
+		mdRenderer:  mdRenderer,
 	}
 	b.updateActiveColumns()
 	return b
@@ -130,6 +150,7 @@ func (b *BoardModel) SetIssues(issues []model.Issue) {
 	}
 
 	b.columns = cols
+	b.blocksIndex = buildBlocksIndex(issues) // Rebuild reverse dependency index (bv-1daf)
 
 	// Sanitize selection to prevent out-of-bounds
 	for i := 0; i < 4; i++ {
@@ -360,12 +381,12 @@ func (b BoardModel) View(width, height int) string {
 
 		header := headerStyle.Render(headerText)
 
-		// Calculate visible rows
-		// Cards have 3 content lines + 1 margin, plus borders:
-		// - Non-selected: bottom border only (+1) = ~5 lines
-		// - Selected: full rounded border (+2) = ~6 lines
-		// Use 5 as average to avoid overflow
-		cardHeight := 5
+		// Calculate visible rows (bv-1daf: now 4 content lines)
+		// Cards have 4 content lines + 1 margin, plus borders:
+		// - Non-selected: bottom border only (+1) = ~6 lines
+		// - Selected: full rounded border (+2) = ~7 lines
+		// Use 6 as average to avoid overflow
+		cardHeight := 6
 		visibleCards := (colHeight - 1) / cardHeight
 		if visibleCards < 1 {
 			visibleCards = 1
@@ -451,12 +472,40 @@ func (b BoardModel) View(width, height int) string {
 	return boardView
 }
 
-// renderCard creates a visually rich card for an issue with Stripe-level polish
+// getAgeColor returns a color based on issue age (bv-1daf)
+// green (<7d), yellow (7-30d), red (>30d stale)
+func getAgeColor(t time.Time) lipgloss.TerminalColor {
+	if t.IsZero() {
+		return ColorMuted
+	}
+	days := int(time.Since(t).Hours() / 24)
+	switch {
+	case days < 7:
+		return lipgloss.AdaptiveColor{Light: "#2e7d32", Dark: "#81c784"} // green
+	case days < 30:
+		return lipgloss.AdaptiveColor{Light: "#f57c00", Dark: "#ffb74d"} // yellow/orange
+	default:
+		return lipgloss.AdaptiveColor{Light: "#c62828", Dark: "#e57373"} // red
+	}
+}
+
+// formatPriority returns priority as P0/P1/P2/P3/P4 (bv-1daf)
+func formatPriority(p int) string {
+	if p < 0 {
+		p = 0
+	}
+	if p > 4 {
+		p = 4
+	}
+	return fmt.Sprintf("P%d", p)
+}
+
+// renderCard creates a visually rich card for an issue (bv-1daf: 4-line format)
 func (b BoardModel) renderCard(issue model.Issue, width int, selected bool, colIdx int) string {
 	t := b.theme
 
 	// ══════════════════════════════════════════════════════════════════════════
-	// CARD STYLING
+	// CARD STYLING - Fixed 4-line height for consistency (bv-1daf)
 	// ══════════════════════════════════════════════════════════════════════════
 	cardStyle := t.Renderer.NewStyle().
 		Width(width).
@@ -477,26 +526,43 @@ func (b BoardModel) renderCard(issue model.Issue, width int, selected bool, colI
 	}
 
 	// ══════════════════════════════════════════════════════════════════════════
-	// LINE 1: Type icon + Priority + ID
+	// LINE 1: Type icon + Priority (P0/P1/P2) + ID + Age with color (bv-1daf)
 	// ══════════════════════════════════════════════════════════════════════════
 	icon, iconColor := t.GetTypeIcon(string(issue.IssueType))
-	prioIcon := GetPriorityIcon(issue.Priority)
 
-	// Truncate ID for narrow cards
-	maxIDLen := width - 8
+	// Priority as P0/P1/P2 text (clearer than emoji flame levels)
+	prioText := formatPriority(issue.Priority)
+	prioStyle := t.Renderer.NewStyle().Bold(true)
+	if issue.Priority <= 1 {
+		prioStyle = prioStyle.Foreground(lipgloss.AdaptiveColor{Light: "#c62828", Dark: "#ef5350"})
+	} else {
+		prioStyle = prioStyle.Foreground(t.Secondary)
+	}
+
+	// Truncate ID for narrow cards - reserve space for age indicator
+	maxIDLen := width - 14 // Icon(2) + space + P#(2) + space + age(6) + spacing
 	if maxIDLen < 6 {
 		maxIDLen = 6
 	}
 	displayID := truncateRunesHelper(issue.ID, maxIDLen, "…")
 
-	line1 := fmt.Sprintf("%s %s %s",
+	// Age indicator with color coding: green(<7d), yellow(7-30d), red(>30d)
+	ageText := FormatTimeRel(issue.UpdatedAt)
+	if len(ageText) > 6 {
+		ageText = truncateRunesHelper(ageText, 6, "")
+	}
+	ageColor := getAgeColor(issue.UpdatedAt)
+	ageStyled := t.Renderer.NewStyle().Foreground(ageColor).Render(ageText)
+
+	line1 := fmt.Sprintf("%s %s %s %s",
 		t.Renderer.NewStyle().Foreground(iconColor).Render(icon),
-		prioIcon,
+		prioStyle.Render(prioText),
 		t.Renderer.NewStyle().Bold(true).Foreground(t.Secondary).Render(displayID),
+		ageStyled,
 	)
 
 	// ══════════════════════════════════════════════════════════════════════════
-	// LINE 2: Title with selection highlighting
+	// LINE 2: Title with full available width (bv-1daf)
 	// ══════════════════════════════════════════════════════════════════════════
 	titleWidth := width - 2
 	if titleWidth < 10 {
@@ -513,51 +579,54 @@ func (b BoardModel) renderCard(issue model.Issue, width int, selected bool, colI
 	line2 := titleStyle.Render(truncatedTitle)
 
 	// ══════════════════════════════════════════════════════════════════════════
-	// LINE 3: Metadata chips (assignee, deps, labels, age)
+	// LINE 3: Blocked-by + Blocks count + Labels (bv-1daf)
+	// No @assignee - not useful for agent workflows per spec
 	// ══════════════════════════════════════════════════════════════════════════
 	var meta []string
 
-	// Assignee chip
-	if issue.Assignee != "" {
-		assignee := truncateRunesHelper(issue.Assignee, 8, "…")
-		meta = append(meta, t.Renderer.NewStyle().
-			Foreground(t.Secondary).
-			Render("@"+assignee))
-	}
-
-	// Dependencies chip with count
-	depCount := len(issue.Dependencies)
-	if depCount > 0 {
-		depStyle := t.Renderer.NewStyle().Foreground(t.Feature)
-		meta = append(meta, depStyle.Render(fmt.Sprintf("→%d", depCount)))
-	}
-
-	// Labels chip (first label + count)
-	if len(issue.Labels) > 0 {
-		labelPreview := truncateRunesHelper(issue.Labels[0], 6, "")
-		labelText := labelPreview
-		if len(issue.Labels) > 1 {
-			labelText += fmt.Sprintf("+%d", len(issue.Labels)-1)
+	// Blocked-by indicator: 🚫←bv-456 (compact) - show first blocking dep
+	for _, dep := range issue.Dependencies {
+		if dep != nil && dep.Type.IsBlocking() {
+			blockerID := truncateRunesHelper(dep.DependsOnID, 10, "…")
+			blockedStyle := t.Renderer.NewStyle().Foreground(t.Blocked)
+			meta = append(meta, blockedStyle.Render("🚫←"+blockerID))
+			break // Only show first blocker
 		}
-		labelStyle := t.Renderer.NewStyle().
-			Foreground(t.InProgress).
-			Padding(0, 0)
+	}
+
+	// Blocks count: ⚡→N (this card blocks N others) - from reverse index
+	if blockedIDs, ok := b.blocksIndex[issue.ID]; ok && len(blockedIDs) > 0 {
+		blocksStyle := t.Renderer.NewStyle().Foreground(t.Feature)
+		meta = append(meta, blocksStyle.Render(fmt.Sprintf("⚡→%d", len(blockedIDs))))
+	}
+
+	// Labels: show 2-3 label names (no "+N" count per spec)
+	if len(issue.Labels) > 0 {
+		maxLabels := 3
+		if len(issue.Labels) < maxLabels {
+			maxLabels = len(issue.Labels)
+		}
+		var labelParts []string
+		for i := 0; i < maxLabels; i++ {
+			labelParts = append(labelParts, truncateRunesHelper(issue.Labels[i], 8, ""))
+		}
+		labelText := strings.Join(labelParts, ",")
+		labelStyle := t.Renderer.NewStyle().Foreground(t.InProgress)
 		meta = append(meta, labelStyle.Render(labelText))
 	}
 
 	line3 := ""
 	if len(meta) > 0 {
 		line3 = strings.Join(meta, " ")
-	} else {
-		// Show age if no other metadata
-		age := FormatTimeRel(issue.UpdatedAt)
-		line3 = t.Renderer.NewStyle().
-			Foreground(ColorMuted).
-			Italic(true).
-			Render(age)
 	}
 
-	return cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, line1, line2, line3))
+	// ══════════════════════════════════════════════════════════════════════════
+	// LINE 4: Empty line for consistent 4-line height (bv-1daf)
+	// Could be used for activity indicator in future
+	// ══════════════════════════════════════════════════════════════════════════
+	line4 := "" // Placeholder for optional activity bar
+
+	return cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, line1, line2, line3, line4))
 }
 
 // renderDetailPanel renders the detail panel for the selected issue (bv-r6kh)
