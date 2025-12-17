@@ -208,6 +208,29 @@ func TestCompareVersions_Transitivity(t *testing.T) {
 	}
 }
 
+func TestCompareVersions_DevBuilds(t *testing.T) {
+	tests := []struct {
+		name     string
+		v1       string // remote
+		v2       string // local
+		expected int    // 1 if remote>local (update needed), -1 if local>remote (no update)
+	}{
+		{"dev is newer than release", "v1.0.0", "dev", -1},
+		{"nightly is newer than release", "v1.0.0", "nightly", -1},
+		// "dirty" string itself is unparsable as semver, so it triggers the dev build check
+		{"dirty string is newer than release", "v1.0.0", "dirty", -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := compareVersions(tt.v1, tt.v2)
+			if got != tt.expected {
+				t.Errorf("compareVersions(%q, %q) = %d; want %d", tt.v1, tt.v2, got, tt.expected)
+			}
+		})
+	}
+}
+
 // ============================================================================
 // Release struct tests
 // ============================================================================

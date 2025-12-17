@@ -37,9 +37,9 @@ func NewEmbedderFromConfig(cfg EmbeddingConfig) (Embedder, error) {
 	case "", ProviderHash:
 		return NewHashEmbedder(cfg.Dim), nil
 	case ProviderPythonSentenceTransformers:
-		return nil, fmt.Errorf("semantic embedder %q not implemented; set %s=%q for deterministic fallback", cfg.Provider, EnvSemanticEmbedder, ProviderHash)
+		return nil, fmt.Errorf("semantic embedder %q not implemented (mvp placeholder); set %s=%q for deterministic fallback", cfg.Provider, EnvSemanticEmbedder, ProviderHash)
 	case ProviderOpenAI:
-		return nil, fmt.Errorf("semantic embedder %q not implemented; set %s=%q for deterministic fallback", cfg.Provider, EnvSemanticEmbedder, ProviderHash)
+		return nil, fmt.Errorf("semantic embedder %q not implemented (placeholder); set %s=%q for deterministic fallback", cfg.Provider, EnvSemanticEmbedder, ProviderHash)
 	default:
 		return nil, fmt.Errorf("unknown semantic embedder %q; expected %q", cfg.Provider, ProviderHash)
 	}

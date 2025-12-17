@@ -151,6 +151,17 @@ func compareVersions(v1, v2 string) int {
 	p1 := parse(v1)
 	p2 := parse(v2)
 
+	// If local version (v2) is a development build, consider it newer than any release
+	// to prevent downgrade prompts.
+	isDev := func(v string) bool {
+		v = strings.ToLower(v)
+		return strings.Contains(v, "dev") || strings.Contains(v, "nightly") || strings.Contains(v, "dirty")
+	}
+
+	if p2 == nil && isDev(v2) {
+		return -1 // v2 (dev) > v1 (any)
+	}
+
 	// If one is parsed (valid semver) and the other is not (dev/custom),
 	// treat the parsed one as newer than empty/unknown, but dev/nightly newer than released?
 	// For our updater: unparsable (dev/dirty/empty) should NOT trigger downgrade prompts.

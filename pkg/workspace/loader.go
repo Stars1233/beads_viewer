@@ -145,7 +145,7 @@ func (l *AggregateLoader) loadReposParallel(ctx context.Context, repos []RepoCon
 	return results, nil
 }
 
-// loadSingleRepo loads issues from a single repository and namespaces them
+// loadSingleRepo loads issues from a single repository and namespaced them
 func (l *AggregateLoader) loadSingleRepo(repo RepoConfig) ([]model.Issue, error) {
 	// Resolve the repo path relative to workspace root
 	repoPath := repo.Path
@@ -164,15 +164,21 @@ func (l *AggregateLoader) loadSingleRepo(repo RepoConfig) ([]model.Issue, error)
 		return nil, fmt.Errorf("failed to load issues from %s: %w", repo.GetName(), err)
 	}
 
+	// Build map of local IDs for conflict resolution
+	localIDs := make(map[string]bool, len(issues))
+	for _, issue := range issues {
+		localIDs[issue.ID] = true
+	}
+
 	// Apply namespacing to all IDs
 	prefix := repo.GetPrefix()
-	namespacedIssues := l.namespaceIssues(issues, prefix)
+	namespacedIssues := l.namespaceIssues(issues, prefix, localIDs)
 
 	return namespacedIssues, nil
 }
 
 // namespaceIssues adds the prefix to all issue IDs and dependency references
-func (l *AggregateLoader) namespaceIssues(issues []model.Issue, prefix string) []model.Issue {
+func (l *AggregateLoader) namespaceIssues(issues []model.Issue, prefix string, localIDs map[string]bool) []model.Issue {
 	result := make([]model.Issue, len(issues))
 
 	for i, issue := range issues {
@@ -189,9 +195,17 @@ func (l *AggregateLoader) namespaceIssues(issues []model.Issue, prefix string) [
 				}
 				namespacedDep := *dep
 				namespacedDep.IssueID = QualifyID(dep.IssueID, prefix)
-				// Only namespace DependsOnID if it looks like a local ID
-				// (doesn't already have a known prefix)
-				if !l.hasKnownPrefix(dep.DependsOnID) {
+				
+				// Resolve DependsOnID:
+				// 1. If it matches a local issue ID, it's local -> namespace it.
+				// 2. If it has a known external prefix, it's external -> keep as is.
+				// 3. Otherwise, assume it's local (e.g. missing/future local issue) -> namespace it.
+				if localIDs[dep.DependsOnID] {
+					namespacedDep.DependsOnID = QualifyID(dep.DependsOnID, prefix)
+				} else if l.hasKnownPrefix(dep.DependsOnID) {
+					// External reference, keep as is
+				} else {
+					// Assume local
 					namespacedDep.DependsOnID = QualifyID(dep.DependsOnID, prefix)
 				}
 				namespacedDeps[j] = &namespacedDep
