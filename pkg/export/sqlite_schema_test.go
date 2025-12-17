@@ -183,16 +183,44 @@ func TestCreateMaterializedViews(t *testing.T) {
 	// Insert test data
 	_, err = db.Exec(`
 		INSERT INTO issues (id, title, description, status, priority, issue_type, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, "mv-1", "Test MV", "Test materialized view", "open", 2, "task", "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z")
+		VALUES
+			(?, ?, ?, ?, ?, ?, ?, ?),
+			(?, ?, ?, ?, ?, ?, ?, ?),
+			(?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		"mv-1", "Test MV 1", "Test materialized view 1", "open", 2, "task", "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z",
+		"mv-2", "Test MV 2", "Test materialized view 2", "open", 2, "task", "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z",
+		"mv-3", "Test MV 3", "Test materialized view 3", "open", 2, "task", "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z",
+	)
 	if err != nil {
 		t.Fatalf("Insert failed: %v", err)
 	}
 
+	// mv-1 depends on mv-2 via a blocking relationship. mv-3 depends on mv-2 via legacy empty type.
+	_, err = db.Exec(`
+		INSERT INTO dependencies (issue_id, depends_on_id, type)
+		VALUES
+			(?, ?, ?),
+			(?, ?, ?)
+	`,
+		"mv-1", "mv-2", "blocks",
+		"mv-3", "mv-2", "",
+	)
+	if err != nil {
+		t.Fatalf("Insert dependencies failed: %v", err)
+	}
+
 	_, err = db.Exec(`
 		INSERT INTO issue_metrics (issue_id, pagerank, triage_score, blocks_count, blocked_by_count)
-		VALUES (?, ?, ?, ?, ?)
-	`, "mv-1", 0.25, 0.80, 3, 0)
+		VALUES
+			(?, ?, ?, ?, ?),
+			(?, ?, ?, ?, ?),
+			(?, ?, ?, ?, ?)
+	`,
+		"mv-1", 0.25, 0.80, 0, 1,
+		"mv-2", 0.10, 0.50, 2, 0,
+		"mv-3", 0.05, 0.20, 0, 1,
+	)
 	if err != nil {
 		t.Fatalf("Insert metrics failed: %v", err)
 	}
@@ -205,18 +233,59 @@ func TestCreateMaterializedViews(t *testing.T) {
 	// Verify view exists and has data
 	var id string
 	var pagerank, triageScore float64
-	var blocksCount int
+	var blocksCount, blockedByCount int
+	var blocksIDs, blockedByIDs sql.NullString
 	err = db.QueryRow(`
-		SELECT id, pagerank, triage_score, blocks_count
+		SELECT id, pagerank, triage_score, blocks_count, blocked_by_count, blocks_ids, blocked_by_ids
 		FROM issue_overview_mv
 		WHERE id = ?
-	`, "mv-1").Scan(&id, &pagerank, &triageScore, &blocksCount)
+	`, "mv-1").Scan(&id, &pagerank, &triageScore, &blocksCount, &blockedByCount, &blocksIDs, &blockedByIDs)
 	if err != nil {
 		t.Fatalf("Query MV failed: %v", err)
 	}
 
-	if pagerank != 0.25 || triageScore != 0.80 || blocksCount != 3 {
-		t.Errorf("Unexpected MV values: pagerank=%f triageScore=%f blocksCount=%d", pagerank, triageScore, blocksCount)
+	if pagerank != 0.25 || triageScore != 0.80 || blocksCount != 0 || blockedByCount != 1 {
+		t.Errorf("Unexpected MV values: pagerank=%f triageScore=%f blocksCount=%d blockedByCount=%d", pagerank, triageScore, blocksCount, blockedByCount)
+	}
+	if blocksIDs.Valid && blocksIDs.String != "" {
+		t.Errorf("Unexpected mv-1 blocks_ids: %q", blocksIDs.String)
+	}
+	if !blockedByIDs.Valid || blockedByIDs.String != "mv-2" {
+		t.Errorf("Unexpected mv-1 blocked_by_ids: valid=%v value=%q", blockedByIDs.Valid, blockedByIDs.String)
+	}
+
+	blocksIDs = sql.NullString{}
+	blockedByIDs = sql.NullString{}
+	err = db.QueryRow(`
+		SELECT blocks_ids, blocked_by_ids
+		FROM issue_overview_mv
+		WHERE id = ?
+	`, "mv-2").Scan(&blocksIDs, &blockedByIDs)
+	if err != nil {
+		t.Fatalf("Query MV for mv-2 failed: %v", err)
+	}
+	if !blocksIDs.Valid || blocksIDs.String != "mv-1,mv-3" {
+		t.Errorf("Unexpected mv-2 blocks_ids: valid=%v value=%q", blocksIDs.Valid, blocksIDs.String)
+	}
+	if blockedByIDs.Valid && blockedByIDs.String != "" {
+		t.Errorf("Unexpected mv-2 blocked_by_ids: %q", blockedByIDs.String)
+	}
+
+	blocksIDs = sql.NullString{}
+	blockedByIDs = sql.NullString{}
+	err = db.QueryRow(`
+		SELECT blocks_ids, blocked_by_ids
+		FROM issue_overview_mv
+		WHERE id = ?
+	`, "mv-3").Scan(&blocksIDs, &blockedByIDs)
+	if err != nil {
+		t.Fatalf("Query MV for mv-3 failed: %v", err)
+	}
+	if blocksIDs.Valid && blocksIDs.String != "" {
+		t.Errorf("Unexpected mv-3 blocks_ids: %q", blocksIDs.String)
+	}
+	if !blockedByIDs.Valid || blockedByIDs.String != "mv-2" {
+		t.Errorf("Unexpected mv-3 blocked_by_ids: valid=%v value=%q", blockedByIDs.Valid, blockedByIDs.String)
 	}
 }
 
