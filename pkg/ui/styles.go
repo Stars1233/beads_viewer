@@ -154,6 +154,9 @@ func RenderStatusBadge(status string) string {
 
 // RenderMiniBar renders a mini horizontal bar for a value between 0 and 1
 func RenderMiniBar(value float64, width int) string {
+	if width <= 0 {
+		return ""
+	}
 	if value < 0 {
 		value = 0
 	}

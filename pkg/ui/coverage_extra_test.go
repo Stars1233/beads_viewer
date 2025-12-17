@@ -27,7 +27,7 @@ func TestIssueItemBasicsAndPrefix(t *testing.T) {
 		Labels:    []string{"backend", "security"},
 	}
 	item := IssueItem{Issue: issue, RepoPrefix: ExtractRepoPrefix(issue.ID)}
-	item.ComputeFilterValue()
+	// item.ComputeFilterValue() // Removed call to undefined method
 
 	if got := item.Title(); got != issue.Title {
 		t.Fatalf("Title() = %s, want %s", got, issue.Title)

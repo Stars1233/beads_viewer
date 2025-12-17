@@ -56,10 +56,18 @@ func TestRenderMiniBar(t *testing.T) {
 		{1.0, 10},
 		{-0.1, 10}, // Should clamp to 0
 		{1.5, 10},  // Should clamp to 1
+		{0.5, 0},   // Should return empty
+		{0.5, -5},  // Should return empty (no panic)
 	}
 
 	for _, tt := range tests {
 		got := RenderMiniBar(tt.val, tt.width)
+		if tt.width <= 0 {
+			if got != "" {
+				t.Errorf("RenderMiniBar(%v, %d) = %q, want empty string", tt.val, tt.width, got)
+			}
+			continue
+		}
 		// Basic sanity check: output should not be empty
 		if got == "" {
 			t.Errorf("RenderMiniBar(%v, %d) returned empty string", tt.val, tt.width)
