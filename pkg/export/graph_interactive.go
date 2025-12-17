@@ -1,6 +1,7 @@
 package export
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,6 +14,9 @@ import (
 	"github.com/Dicklesworthstone/beads_viewer/pkg/analysis"
 	"github.com/Dicklesworthstone/beads_viewer/pkg/model"
 )
+
+//go:embed force-graph.min.js
+var forceGraphJS string
 
 // InteractiveGraphOptions configures HTML graph generation
 type InteractiveGraphOptions struct {
@@ -56,10 +60,11 @@ type graphLink struct {
 }
 
 // GenerateInteractiveGraphFilename creates an auto-generated filename
-// Format: {project}_{YYYYMMDD}_{HHMMSS}_{gitshort}.html
+// Format: {project}_graph_export__as_of__YYYY_MM_DD__HH_MM__git_head_hash__{gitshort}.html
 func GenerateInteractiveGraphFilename(projectName string) string {
 	now := time.Now()
-	dateStr := now.Format("20060102_150405")
+	dateStr := now.Format("2006_01_02")
+	timeStr := now.Format("15_04")
 
 	// Get short git commit hash
 	gitShort := "nogit"
@@ -72,7 +77,7 @@ func GenerateInteractiveGraphFilename(projectName string) string {
 	safeName := strings.ReplaceAll(projectName, " ", "_")
 	safeName = strings.ReplaceAll(safeName, "/", "_")
 
-	return fmt.Sprintf("%s_%s_%s.html", safeName, dateStr, gitShort)
+	return fmt.Sprintf("%s_graph_export__as_of__%s__%s__git_head_hash__%s.html", safeName, dateStr, timeStr, gitShort)
 }
 
 // GenerateInteractiveGraphHTML creates a self-contained HTML file with force-graph visualization
@@ -197,7 +202,7 @@ func GenerateInteractiveGraphHTML(opts InteractiveGraphOptions) (string, error) 
 		outputPath = strings.TrimSuffix(outputPath, filepath.Ext(outputPath)) + ".html"
 	}
 
-	html := generateUltimateHTML(title, opts.DataHash, string(dataJSON), len(nodes), len(links), opts.ProjectName)
+	html := generateUltimateHTML(title, opts.DataHash, string(dataJSON), len(nodes), len(links), opts.ProjectName, forceGraphJS)
 
 	// Ensure directory exists
 	dir := filepath.Dir(outputPath)
@@ -214,7 +219,7 @@ func GenerateInteractiveGraphHTML(opts InteractiveGraphOptions) (string, error) 
 	return outputPath, nil
 }
 
-func generateUltimateHTML(title, dataHash, graphDataJSON string, nodeCount, edgeCount int, projectName string) string {
+func generateUltimateHTML(title, dataHash, graphDataJSON string, nodeCount, edgeCount int, projectName, forceGraphLib string) string {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
@@ -307,7 +312,8 @@ func generateUltimateHTML(title, dataHash, graphDataJSON string, nodeCount, edge
         .search-box input:focus { outline: none; border-color: var(--purple); box-shadow: 0 0 0 2px rgba(189,147,249,0.15); }
         .search-box::before { content: '\1F50D'; position: absolute; left: 0.5rem; top: 50%%; transform: translateY(-50%%); font-size: 0.65rem; opacity: 0.6; }
         main { flex: 1; display: flex; overflow: hidden; position: relative; }
-        #graph-container { flex: 1; position: relative; background: radial-gradient(ellipse at center, var(--bg) 0%%, var(--bg-tertiary) 100%%); }
+        #graph-wrapper { flex: 1; position: relative; }
+        #graph-container { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(ellipse at center, var(--bg) 0%%, var(--bg-tertiary) 100%%); }
         .overlay-stats {
             position: absolute; top: 0.75rem; left: 0.75rem;
             background: var(--bg-secondary); padding: 0.5rem 0.75rem;
@@ -492,7 +498,8 @@ func generateUltimateHTML(title, dataHash, graphDataJSON string, nodeCount, edge
         </div>
     </header>
     <main>
-        <div id="graph-container">
+        <div id="graph-wrapper">
+            <div id="graph-container"></div>
             <div class="overlay-stats">
                 <div class="stat"><span class="stat-value">%d</span> nodes</div>
                 <div class="stat"><span class="stat-value">%d</span> edges</div>
@@ -585,7 +592,7 @@ func generateUltimateHTML(title, dataHash, graphDataJSON string, nodeCount, edge
         <div class="context-menu-item" id="ctx-path">🛤️ Find path to...</div>
         <div class="context-menu-item" id="ctx-copy">📋 Copy ID</div>
     </div>
-    <script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
+    <script>%s</script>
     <script>
 const DATA = %s;
 const STATUS_COLORS = { open: '#50fa7b', in_progress: '#ffb86c', blocked: '#ff5555', closed: '#6272a4' };
@@ -660,9 +667,11 @@ const Graph = ForceGraph()(container)
     .d3AlphaDecay(0.02)
     .d3VelocityDecay(0.25)
     .nodeCanvasObject((node, ctx, globalScale) => {
+        const x = node.x, y = node.y;
+        // Guard against undefined coordinates during initial simulation
+        if (x === undefined || y === undefined || !isFinite(x) || !isFinite(y)) return;
         const size = getNodeSize(node);
         const color = heatmapMode ? getHeatmapColor(node) : STATUS_COLORS[node.status] || '#6272a4';
-        const x = node.x, y = node.y;
         if (node.is_articulation) {
             ctx.beginPath(); ctx.arc(x, y, size + 5, 0, 2 * Math.PI);
             const g = ctx.createRadialGradient(x, y, size, x, y, size + 7);
@@ -689,6 +698,7 @@ const Graph = ForceGraph()(container)
         }
     })
     .nodePointerAreaPaint((n, c, ctx) => {
+        if (n.x === undefined || n.y === undefined || !isFinite(n.x) || !isFinite(n.y)) return;
         const size = getNodeSize(n) + 3;
         ctx.fillStyle = c; ctx.beginPath(); ctx.arc(n.x, n.y, size, 0, 2 * Math.PI); ctx.fill();
     })
@@ -828,18 +838,20 @@ function highlightDependencies(node, type) {
 
 // Search and filter
 let searchTerm = '', statusFilter = '';
+let currentVisibilityFilter = () => true;
 document.getElementById('search-input').oninput = e => { searchTerm = e.target.value.toLowerCase(); applyFilters(); };
 document.getElementById('filter-status').onchange = e => { statusFilter = e.target.value; applyFilters(); };
 function applyFilters() {
-    Graph.nodeVisibility(n => {
+    currentVisibilityFilter = n => {
         const matchSearch = !searchTerm || n.id.toLowerCase().includes(searchTerm) || n.title.toLowerCase().includes(searchTerm) || (n.labels || []).some(l => l.toLowerCase().includes(searchTerm));
         const matchStatus = !statusFilter || n.status === statusFilter;
         return matchSearch && matchStatus;
-    });
+    };
+    Graph.nodeVisibility(currentVisibilityFilter);
     updateVisibleCount();
 }
 function updateVisibleCount() {
-    const count = DATA.nodes.filter(n => Graph.nodeVisibility()(n)).length;
+    const count = DATA.nodes.filter(n => currentVisibilityFilter(n)).length;
     document.getElementById('stat-visible').innerHTML = '<span class="stat-value">' + count + '</span> visible';
 }
 
@@ -934,5 +946,5 @@ document.onkeydown = e => {
 setTimeout(() => { Graph.zoomToFit(400, 40); updateVisibleCount(); }, 800);
     </script>
 </body>
-</html>`, title, title, nodeCount, edgeCount, nodeCount, nodeCount, edgeCount, timestamp, dataHash, projectName, graphDataJSON)
+</html>`, title, title, nodeCount, edgeCount, nodeCount, nodeCount, edgeCount, timestamp, dataHash, projectName, forceGraphLib, graphDataJSON)
 }
