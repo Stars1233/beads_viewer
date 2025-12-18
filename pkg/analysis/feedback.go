@@ -218,7 +218,11 @@ func (f *FeedbackData) updateWeightAdjustments(action string, breakdown ScoreBre
 func (f *FeedbackData) GetAdjustedWeights() map[string]float64 {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
+	return f.getAdjustedWeightsLocked()
+}
 
+// getAdjustedWeightsLocked is the internal version that assumes lock is already held
+func (f *FeedbackData) getAdjustedWeightsLocked() map[string]float64 {
 	weights := make(map[string]float64)
 	for _, adj := range f.Adjustments {
 		weights[adj.Name] = adj.Adjustment
@@ -230,7 +234,11 @@ func (f *FeedbackData) GetAdjustedWeights() map[string]float64 {
 func (f *FeedbackData) GetEffectiveWeights() map[string]float64 {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
+	return f.getEffectiveWeightsLocked()
+}
 
+// getEffectiveWeightsLocked is the internal version that assumes lock is already held
+func (f *FeedbackData) getEffectiveWeightsLocked() map[string]float64 {
 	baseWeights := map[string]float64{
 		"PageRank":      WeightPageRank,
 		"Betweenness":   WeightBetweenness,
@@ -243,7 +251,7 @@ func (f *FeedbackData) GetEffectiveWeights() map[string]float64 {
 	}
 
 	effective := make(map[string]float64)
-	adjustments := f.GetAdjustedWeights()
+	adjustments := f.getAdjustedWeightsLocked() // Use internal version to avoid deadlock
 
 	for name, base := range baseWeights {
 		if adj, ok := adjustments[name]; ok {
@@ -320,8 +328,8 @@ func (f *FeedbackData) ToJSON() FeedbackJSON {
 		IgnoredCount:      f.Stats.TotalIgnored,
 		AvgAcceptScore:    f.Stats.AvgAcceptScore,
 		AvgIgnoreScore:    f.Stats.AvgIgnoreScore,
-		WeightAdjustments: f.GetAdjustedWeights(),
-		EffectiveWeights:  f.GetEffectiveWeights(),
+		WeightAdjustments: f.getAdjustedWeightsLocked(),  // Use internal version to avoid deadlock
+		EffectiveWeights:  f.getEffectiveWeightsLocked(), // Use internal version to avoid deadlock
 		UpdatedAt:         f.UpdatedAt,
 	}
 }
