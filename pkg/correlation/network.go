@@ -405,6 +405,7 @@ func (nb *NetworkBuilder) buildCluster(id int, beadIDs []string, network *Impact
 	}
 
 	// Count internal and external edges
+	// Note: network.Edges contains unique edges (not duplicated for each direction)
 	for _, edge := range network.Edges {
 		fromIn := clusterSet[edge.FromBead]
 		toIn := clusterSet[edge.ToBead]
@@ -415,8 +416,6 @@ func (nb *NetworkBuilder) buildCluster(id int, beadIDs []string, network *Impact
 			cluster.ExternalEdges++
 		}
 	}
-	// Each edge is counted twice (once from each direction), so divide by 2
-	cluster.InternalEdges /= 2
 
 	// Calculate internal connectivity
 	n := len(beadIDs)
@@ -703,16 +702,20 @@ func (network *ImpactNetwork) ToResult(beadID string, depth int) *ImpactNetworkR
 		result.Network = network
 	}
 
-	// Top 5 clusters
+	// Top 5 clusters (always from full network for context)
 	clusterLimit := 5
 	if len(network.Clusters) < clusterLimit {
 		clusterLimit = len(network.Clusters)
 	}
 	result.TopClusters = network.Clusters[:clusterLimit]
 
-	// Top 10 most connected beads
-	nodes := make([]NetworkNode, 0, len(network.Nodes))
-	for _, node := range network.Nodes {
+	// Top 10 most connected beads (from subnetwork if beadID specified, else full network)
+	sourceNodes := network.Nodes
+	if beadID != "" && result.Network != nil {
+		sourceNodes = result.Network.Nodes
+	}
+	nodes := make([]NetworkNode, 0, len(sourceNodes))
+	for _, node := range sourceNodes {
 		nodes = append(nodes, *node)
 	}
 	sort.Slice(nodes, func(i, j int) bool {

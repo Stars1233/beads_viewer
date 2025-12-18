@@ -134,19 +134,6 @@ func formatOldestAge(d time.Duration) string {
 	return fmt.Sprintf("%dmo", months)
 }
 
-// getOldestAgeColor returns color based on age (bv-nl8a)
-// green(<7d), yellow(7-30d), red(>30d)
-func getOldestAgeColor(d time.Duration) lipgloss.TerminalColor {
-	days := int(d.Hours() / 24)
-	switch {
-	case days < 7:
-		return lipgloss.AdaptiveColor{Light: "#2e7d32", Dark: "#81c784"} // green
-	case days < 30:
-		return lipgloss.AdaptiveColor{Light: "#f57c00", Dark: "#ffb74d"} // yellow
-	default:
-		return lipgloss.AdaptiveColor{Light: "#c62828", Dark: "#e57373"} // red
-	}
-}
 
 // sortIssuesByPriorityAndDate sorts issues by priority (ascending) then by creation date (descending)
 func sortIssuesByPriorityAndDate(issues []model.Issue) {
