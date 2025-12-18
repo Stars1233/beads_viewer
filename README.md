@@ -1702,15 +1702,50 @@ Each relation includes a **relevance score** (0-100) indicating strength.
 # Get the full impact network
 bv --robot-impact-network
 
-# Get network focused on specific bead (2-hop radius)
-bv --robot-impact-network --bead BV-123 --depth 2
+# Get network focused on specific bead
+bv --robot-impact-network bv-123
 
 # Find related work for a bead
-bv --robot-related --bead BV-123
+bv --robot-related bv-123
 
-# Get file co-change analysis
-bv --robot-cochange --file pkg/auth/session.go --threshold 0.5
+# Find beads that touched a file
+bv --robot-file-beads pkg/auth/session.go
+
+# Find orphan commits (unlinked to beads)
+bv --robot-orphans
 ```
+
+### Correlation Feedback System
+
+Train the correlation engine by confirming or rejecting its suggestions:
+
+```bash
+# Explain why a correlation exists
+bv --robot-explain-correlation abc1234:bv-xyz
+
+# Confirm a correct correlation (boosts confidence)
+bv --robot-confirm-correlation abc1234:bv-xyz
+
+# Reject an incorrect correlation (removes it)
+bv --robot-reject-correlation abc1234:bv-xyz
+
+# View feedback statistics
+bv --robot-correlation-stats
+```
+
+**Feedback Stats Output:**
+```json
+{
+  "total_feedback": 15,
+  "confirmed": 12,
+  "rejected": 3,
+  "accuracy_rate": 0.80,
+  "avg_confirm_conf": 0.85,
+  "avg_reject_conf": 0.42
+}
+```
+
+This feedback loop improves correlation accuracy over time—confirmed correlations strengthen pattern recognition, while rejections help eliminate false positives.
 
 **Impact Network Output Schema:**
 ```json
