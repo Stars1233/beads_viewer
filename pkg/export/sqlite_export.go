@@ -130,6 +130,11 @@ func (e *SQLiteExporter) Export(outputDir string) error {
 		return fmt.Errorf("create materialized views: %w", err)
 	}
 
+	// Populate additional overview metrics (cycle flags)
+	if err := e.populateOverviewMetrics(db); err != nil {
+		return fmt.Errorf("populate overview metrics: %w", err)
+	}
+
 	// Insert metadata
 	if err := e.insertMeta(db); err != nil {
 		return fmt.Errorf("insert meta: %w", err)
@@ -348,6 +353,45 @@ func (e *SQLiteExporter) insertTriageRecommendations(db *sql.DB) error {
 		)
 		if err != nil {
 			return fmt.Errorf("insert triage for %s: %w", rec.ID, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// populateOverviewMetrics updates issue_overview_mv with metrics derived from graph analysis.
+func (e *SQLiteExporter) populateOverviewMetrics(db *sql.DB) error {
+	if e.Stats == nil {
+		return nil
+	}
+
+	cycles := e.Stats.Cycles()
+	if len(cycles) == 0 {
+		return nil
+	}
+
+	cycleNodes := make(map[string]struct{})
+	for _, cycle := range cycles {
+		for _, id := range cycle {
+			cycleNodes[id] = struct{}{}
+		}
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`UPDATE issue_overview_mv SET in_cycle = ? WHERE id = ?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for id := range cycleNodes {
+		if _, err := stmt.Exec(1, id); err != nil {
+			return fmt.Errorf("update in_cycle for %s: %w", id, err)
 		}
 	}
 
@@ -656,25 +700,39 @@ func (e *SQLiteExporter) writeGraphLayout(dataDir string) error {
 	}
 
 	depth := make(map[string]int)
-	var roots []string
-	for _, issue := range e.Issues {
-		if len(blockedBy[issue.ID]) == 0 {
-			roots = append(roots, issue.ID)
-			depth[issue.ID] = 0
+	if e.Stats != nil && len(e.Stats.TopologicalOrder) > 0 {
+		// Use topological order (dependencies first) to compute longest depth deterministically.
+		for _, id := range e.Stats.TopologicalOrder {
+			if _, ok := depth[id]; !ok {
+				depth[id] = 0
+			}
+			for _, child := range blocks[id] {
+				if depth[child] < depth[id]+1 {
+					depth[child] = depth[id] + 1
+				}
+			}
 		}
-	}
+	} else {
+		var roots []string
+		for _, issue := range e.Issues {
+			if len(blockedBy[issue.ID]) == 0 {
+				roots = append(roots, issue.ID)
+				depth[issue.ID] = 0
+			}
+		}
 
-	queue := roots
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-		currentDepth := depth[current]
-		for _, child := range blocks[current] {
-			if _, visited := depth[child]; !visited {
-				depth[child] = currentDepth + 1
-				queue = append(queue, child)
-			} else if depth[child] < currentDepth+1 {
-				depth[child] = currentDepth + 1
+		queue := roots
+		for len(queue) > 0 {
+			current := queue[0]
+			queue = queue[1:]
+			currentDepth := depth[current]
+			for _, child := range blocks[current] {
+				if _, visited := depth[child]; !visited {
+					depth[child] = currentDepth + 1
+					queue = append(queue, child)
+				} else if depth[child] < currentDepth+1 {
+					depth[child] = currentDepth + 1
+				}
 			}
 		}
 	}

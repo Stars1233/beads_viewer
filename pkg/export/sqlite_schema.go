@@ -210,6 +210,10 @@ func CreateMaterializedViews(db *sql.DB) error {
 			COALESCE(m.triage_score, 0) as triage_score,
 			COALESCE(m.blocks_count, 0) as blocks_count,
 			COALESCE(m.blocked_by_count, 0) as blocked_by_count,
+			COALESCE(m.blocked_by_count, 0) as blocker_count,
+			COALESCE(m.blocks_count, 0) as dependent_count,
+			COALESCE(m.critical_path_depth, 0) as critical_depth,
+			0 as in_cycle,
 				-- dep.IssueID depends on dep.DependsOnID, so:
 				-- - blocks_ids are the issues that depend on i (downstream)
 				-- - blocked_by_ids are the issues i depends on (upstream)
