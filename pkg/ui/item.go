@@ -39,6 +39,12 @@ type IssueItem struct {
 	DiffStatus DiffStatus // Diff state for time-travel mode
 	RepoPrefix string     // Repository prefix for workspace mode (e.g., "api", "web")
 
+	// Semantic/hybrid search scores (set when search is active)
+	SearchScore      float64
+	SearchTextScore  float64
+	SearchComponents map[string]float64
+	SearchScoreSet   bool
+
 	// Triage insights (bv-151)
 	TriageScore   float64  // Unified triage score (0-1)
 	TriageReason  string   // Primary reason for recommendation

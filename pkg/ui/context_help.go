@@ -10,22 +10,22 @@ import (
 // This is used when user triggers context-specific help (e.g., double-tap backtick).
 // Content should fit on one screen (~20 lines) without scrolling.
 var ContextHelpContent = map[Context]string{
-	ContextList:          contextHelpList,
-	ContextGraph:         contextHelpGraph,
-	ContextBoard:         contextHelpBoard,
-	ContextInsights:      contextHelpInsights,
-	ContextHistory:       contextHelpHistory,
-	ContextDetail:        contextHelpDetail,
-	ContextSplit:         contextHelpSplit,
-	ContextFilter:        contextHelpFilter,
-	ContextLabelPicker:   contextHelpLabelPicker,
-	ContextRecipePicker:  contextHelpRecipePicker,
-	ContextHelp:          contextHelpHelp,
-	ContextTimeTravel:    contextHelpTimeTravel,
+	ContextList:           contextHelpList,
+	ContextGraph:          contextHelpGraph,
+	ContextBoard:          contextHelpBoard,
+	ContextInsights:       contextHelpInsights,
+	ContextHistory:        contextHelpHistory,
+	ContextDetail:         contextHelpDetail,
+	ContextSplit:          contextHelpSplit,
+	ContextFilter:         contextHelpFilter,
+	ContextLabelPicker:    contextHelpLabelPicker,
+	ContextRecipePicker:   contextHelpRecipePicker,
+	ContextHelp:           contextHelpHelp,
+	ContextTimeTravel:     contextHelpTimeTravel,
 	ContextLabelDashboard: contextHelpLabelDashboard,
-	ContextAttention:     contextHelpAttention,
-	ContextAgentPrompt:   contextHelpAgentPrompt,
-	ContextCassSession:   contextHelpCassSession,
+	ContextAttention:      contextHelpAttention,
+	ContextAgentPrompt:    contextHelpAgentPrompt,
+	ContextCassSession:    contextHelpCassSession,
 }
 
 // GetContextHelp returns the help content for a given context.
@@ -102,6 +102,8 @@ const contextHelpList = `## List View
   a         All issues
   /         Fuzzy search
   Ctrl+S    Semantic search (AI)
+  H         Hybrid ranking
+  Alt+H     Hybrid preset
 
 **Switch Views**
   b         Board view
@@ -250,6 +252,8 @@ const contextHelpFilter = `## Filter Mode
 **Search**
   /         Start fuzzy search
   Ctrl+S    Semantic search (AI)
+  H         Hybrid ranking
+  Alt+H     Hybrid preset
   n/N       Next/prev match
   Esc       Clear search
 

@@ -18,6 +18,7 @@ type IssueDelegate struct {
 	ShowPriorityHints bool
 	PriorityHints     map[string]*analysis.PriorityRecommendation
 	WorkspaceMode     bool // When true, shows repo prefix badges
+	ShowSearchScores  bool // Show semantic/hybrid score badge when search is active
 }
 
 func (d IssueDelegate) Height() int {
@@ -151,6 +152,15 @@ func (d IssueDelegate) Render(w io.Writer, m list.Model, index int, listItem lis
 	statusBadgeWidth := lipgloss.Width(statusBadge)
 	leftFixedWidth += statusBadgeWidth + 1
 
+	// Search score badge (semantic/hybrid)
+	var searchBadge string
+	if d.ShowSearchScores && i.SearchScoreSet {
+		scoreStr := fmt.Sprintf("%.2f", i.SearchScore)
+		scoreStyle := t.Renderer.NewStyle().Foreground(ColorInfo).Bold(true)
+		searchBadge = scoreStyle.Render(fmt.Sprintf("[%s]", scoreStr))
+		leftFixedWidth += lipgloss.Width(searchBadge) + 1
+	}
+
 	// ID width - use actual visual width, but cap reasonably
 	idWidth := lipgloss.Width(idStr)
 	if idWidth > 35 {
@@ -172,7 +182,7 @@ func (d IssueDelegate) Render(w io.Writer, m list.Model, index int, listItem lis
 
 	// Truncate title if needed
 	title = truncateRunesHelper(title, titleWidth, "…")
-	
+
 	// Pad title to fill space
 	currentWidth := lipgloss.Width(title)
 	if currentWidth < titleWidth {
@@ -236,6 +246,12 @@ func (d IssueDelegate) Render(w io.Writer, m list.Model, index int, listItem lis
 	// Status badge (polished)
 	leftSide.WriteString(statusBadge)
 	leftSide.WriteString(" ")
+
+	// Search score badge (optional)
+	if searchBadge != "" {
+		leftSide.WriteString(searchBadge)
+		leftSide.WriteString(" ")
+	}
 
 	// ID with secondary styling
 	idStyle := t.Renderer.NewStyle().Foreground(t.Secondary)

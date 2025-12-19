@@ -911,7 +911,7 @@ func defaultTutorialPages() []TutorialPage {
 		// =============================================================
 		{
 			ID:      "advanced-semantic-search",
-			Title:   "Semantic Search (~)",
+			Title:   "Semantic + Hybrid Search",
 			Section: "Advanced",
 			Content: advancedSemanticSearchContent,
 		},
@@ -1015,7 +1015,9 @@ func defaultTutorialPages() []TutorialPage {
 | Key | Action |
 |-----|--------|
 | **/** | Fuzzy search |
-| **~** | Semantic search |
+| **Ctrl+S** | Semantic search |
+| **H** | Hybrid ranking |
+| **Alt+H** | Hybrid preset |
 | **o/c/r/a** | Status filter |
 
 > Press **?** in any view for context help.`,
@@ -1530,7 +1532,9 @@ Quickly narrow down what you see:
 | Key | Search Type |
 |-----|-------------|
 | **/** | Fuzzy search (fast, typo-tolerant) |
-| **~** | Semantic search (AI-powered, finds related concepts) |
+| **Ctrl+S** | Semantic search (meaning-based) |
+| **H** | Hybrid ranking (semantic + graph) |
+| **Alt+H** | Cycle hybrid preset |
 | **n/N** | Next/previous search result |
 
 ### Sorting
@@ -1542,7 +1546,7 @@ Press **S** (shift+s) to reverse the current sort order.
 
 - Daily triage: filter to ` + "`r`" + ` (ready) and work top-down
 - Quick status check: filter to ` + "`o`" + ` (open) to see backlog size
-- Finding specific issues: use **/** or **~** to search
+- Finding specific issues: use **/** or **Ctrl+S** to search
 
 > Press **→** to continue.`
 
@@ -1794,50 +1798,47 @@ This is read-only — you're viewing the past, not changing it.
 // =============================================================================
 
 // advancedSemanticSearchContent is the Semantic Search tutorial page.
-const advancedSemanticSearchContent = `## Semantic Search (~)
+const advancedSemanticSearchContent = `## Semantic + Hybrid Search
 
-While **/** gives you fast fuzzy matching on text, **~** activates
-**semantic search** — finding issues by *meaning*, not just words.
+Semantic search finds issues by **meaning**, not just exact words. Hybrid
+ranking keeps those results relevant while surfacing items with higher
+impact in the dependency graph.
 
-### Fuzzy vs Semantic
+### Search Modes
 
-| Feature | Fuzzy (/) | Semantic (~) |
-|---------|-----------|--------------|
-| Speed | Instant | ~1-2 seconds |
-| Typo tolerance | Yes | Yes |
-| Finds synonyms | No | Yes |
-| Requires API | No | Yes |
+| Mode | Key | What it does |
+|------|-----|-------------|
+| Fuzzy | **/** | Literal text match (fast) |
+| Semantic | **Ctrl+S** | Meaning-based retrieval |
+| Hybrid | **H** | Semantic + graph-aware ranking |
+| Preset | **Alt+H** | Cycle hybrid presets |
+
+### How It Works
+
+1. **Semantic retrieval** builds a local vector index from weighted issue text.
+   IDs and titles carry extra weight so exact lookups still win.
+2. **Hybrid ranking** re-scores those candidates using PageRank, status,
+   impact, priority, and recency—so the most important matches rise.
+3. **Short queries** (e.g. "benchmarks") get a literal-match boost and a
+   wider candidate pool for precise, fast lookups.
 
 ### Example
 
-You're looking for issues about "user permissions":
+Searching for "permissions":
 
-- **/** with "permissions" → finds issues containing "permissions"
-- **~** with "permissions" → finds issues about access control, roles,
-  authorization, ACLs, even if they don't use that exact word
+- **Fuzzy** finds issues containing the word permissions
+- **Semantic** finds access control, roles, authorization, ACLs
+- **Hybrid** floats the items that block other work
 
-### Setting Up
-
-Semantic search requires an embedding API. Set your environment:
-
-` + "```bash\nexport OPENAI_API_KEY=sk-...\n# Or use local embeddings:\nexport EMBEDDING_MODEL=local\n```" + `
-
-Without an API key, **~** falls back to fuzzy search.
-
-### When to Use Semantic Search
+### When to Use It
 
 - **Exploratory**: "What do we have about performance?"
-- **Conceptual**: Finding related issues across different wording
-- **New to codebase**: Don't know the exact terminology yet
+- **Conceptual**: "auth bugs" / "rate limiting" / "retry logic"
+- **Prioritize**: Use **H** when you want the most important matches
 
-### Usage Tips
+### Tuning (Optional)
 
-1. Use natural language: "issues about slow database queries"
-2. Be conceptual: "security vulnerabilities" finds auth bugs
-3. Combine with filters: filter to ` + "`r`" + ` (ready) first, then **~**
-
-> **Cost note:** Each semantic search makes an API call. Use fuzzy search
-> for quick lookups where you know the exact terms.
+` + "```bash\nBV_SEARCH_MODE=hybrid\nBV_SEARCH_PRESET=impact-first\nBV_SEARCH_WEIGHTS='{\"text\":0.4,\"pagerank\":0.2,\"status\":0.15,\"impact\":0.1,\"priority\":0.1,\"recency\":0.05}'\n```" + `
 
 > Press **→** to continue.`
 

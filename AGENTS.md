@@ -96,6 +96,32 @@ Use bv instead of parsing beads.jsonl—it computes PageRank, critical paths, cy
 
 ---
 
+### Hybrid Semantic Search (CLI)
+
+`bv --search` supports hybrid ranking (text + graph metrics).
+
+```bash
+# Default (text-only)
+bv --search "login oauth"
+
+# Hybrid mode with preset
+bv --search "login oauth" --search-mode hybrid --search-preset impact-first
+
+# Hybrid with custom weights
+bv --search "login oauth" --search-mode hybrid \
+  --search-weights '{"text":0.4,"pagerank":0.2,"status":0.15,"impact":0.1,"priority":0.1,"recency":0.05}'
+
+# Robot JSON output (adds mode/preset/weights + component_scores for hybrid)
+bv --search "login oauth" --search-mode hybrid --robot-search
+```
+
+Env defaults:
+- `BV_SEARCH_MODE` (text|hybrid)
+- `BV_SEARCH_PRESET` (default|bug-hunting|sprint-planning|impact-first|text-only)
+- `BV_SEARCH_WEIGHTS` (JSON string, overrides preset)
+
+---
+
 ### Static Site Export for Stakeholder Reporting
 
   Generate a static dashboard for non-technical stakeholders:

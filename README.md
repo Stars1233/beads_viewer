@@ -2171,6 +2171,20 @@ bv --export-pages ./bv-pages --pages-exclude-history  # Omit git history
 bv --preview-pages ./bv-pages                   # Serve at localhost:9000
 ```
 
+### Optional: Hybrid Search WASM Scorer
+
+For very large datasets, you can build an optional WASM scorer used by the static viewer.
+
+```bash
+# Build once (requires wasm-pack)
+./scripts/build_hybrid_wasm.sh
+
+# Or build during export
+BV_BUILD_HYBRID_WASM=1 bv --export-pages ./bv-pages
+```
+
+If the `wasm/` assets are missing, the viewer automatically falls back to the JS scorer.
+
 ### What Gets Generated
 
 ```
@@ -2550,7 +2564,27 @@ bv --search "login oauth"
 
 # JSON output for automation
 bv --search "login oauth" --robot-search
+
+# Hybrid search (text + graph metrics)
+bv --search "login oauth" --search-mode hybrid --search-preset impact-first
+
+# Hybrid with custom weights
+bv --search "login oauth" --search-mode hybrid \
+  --search-weights '{"text":0.4,"pagerank":0.2,"status":0.15,"impact":0.1,"priority":0.1,"recency":0.05}'
 ```
+
+Semantic search builds a lightweight vector index from a weighted issue document (ID and title repeated, labels and description included). This keeps lookup fast while still behaving like a human-readable search.
+
+Hybrid mode is a two-stage pipeline: it first retrieves the top candidates by semantic similarity, then re-ranks those candidates using graph-aware signals (PageRank, status, impact, priority, recency). That keeps results anchored to your query while surfacing items that matter most in the dependency graph—a good fit for bv’s goal of making the “why this matters” visible.
+
+Short, intent-heavy queries (e.g., “benchmarks”, “oauth”) are treated differently on purpose. bv widens the candidate pool, boosts literal matches, and raises the text weight so quick lookups behave like a precise search. Longer, descriptive queries lean more on graph signals for smart tie‑breaking and prioritization.
+
+Hybrid defaults can be set via:
+- `BV_SEARCH_MODE` (text|hybrid)
+- `BV_SEARCH_PRESET` (default|bug-hunting|sprint-planning|impact-first|text-only)
+- `BV_SEARCH_WEIGHTS` (JSON string, overrides preset)
+
+In `--robot-search` JSON, hybrid results include `mode`, `preset`, `weights`, plus per-result `text_score` and `component_scores`.
 
 ### Example: AI Agent Workflow
 
