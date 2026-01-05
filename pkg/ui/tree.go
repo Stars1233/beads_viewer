@@ -2,8 +2,13 @@
 package ui
 
 import (
+	"fmt"
+	"sort"
+	"strings"
+
 	"github.com/Dicklesworthstone/beads_viewer/pkg/model"
 	"github.com/charmbracelet/bubbles/viewport"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // TreeViewMode determines what relationships are displayed
@@ -58,22 +63,416 @@ func (t *TreeModel) SetSize(width, height int) {
 }
 
 // Build constructs the tree from issues using parent-child dependencies.
-// This is a placeholder - actual implementation in bv-j3ck.
+// Implementation for bv-j3ck.
 func (t *TreeModel) Build(issues []model.Issue) {
-	// Placeholder - will be implemented in bv-j3ck
+	// Reset state
 	t.roots = nil
 	t.flatList = nil
+	t.issueMap = make(map[string]*IssueTreeNode)
 	t.cursor = 0
+
+	if len(issues) == 0 {
+		t.built = true
+		return
+	}
+
+	// Step 1: Build parent→children index and track which issues have parents
+	// childrenOf maps parentID → slice of child issues
+	childrenOf := make(map[string][]*model.Issue)
+	// hasParent tracks which issues have a parent-child dependency
+	hasParent := make(map[string]bool)
+	// issueByID for quick lookup
+	issueByID := make(map[string]*model.Issue)
+
+	for i := range issues {
+		issue := &issues[i]
+		issueByID[issue.ID] = issue
+
+		for _, dep := range issue.Dependencies {
+			if dep != nil && dep.Type == model.DepParentChild {
+				// This issue has dep.DependsOnID as its parent
+				parentID := dep.DependsOnID
+				childrenOf[parentID] = append(childrenOf[parentID], issue)
+				hasParent[issue.ID] = true
+			}
+		}
+	}
+
+	// Step 2: Identify root nodes (issues with no parent)
+	// Also handle case where parent doesn't exist (dangling reference)
+	var rootIssues []*model.Issue
+	for i := range issues {
+		issue := &issues[i]
+		if !hasParent[issue.ID] {
+			// This issue has no parent - it's a root
+			rootIssues = append(rootIssues, issue)
+		}
+	}
+
+	// Step 3: Build tree recursively with cycle detection
+	visited := make(map[string]bool)
+	for _, issue := range rootIssues {
+		node := t.buildNode(issue, 0, childrenOf, nil, visited)
+		if node != nil {
+			t.roots = append(t.roots, node)
+		}
+	}
+
+	// Step 4: Sort roots by priority, type, then created date
+	t.sortNodes(t.roots)
+
+	// Step 5: Handle empty tree (no parent-child relationships found)
+	// If all issues are roots (no hierarchy), that's fine - show them all
+	// The View() will handle displaying a helpful message if needed
+
+	// Step 6: Build the flat list for navigation
+	t.rebuildFlatList()
+
 	t.built = true
 }
 
+// buildNode recursively builds a tree node and its children.
+// Uses visited map for cycle detection.
+func (t *TreeModel) buildNode(issue *model.Issue, depth int,
+	childrenOf map[string][]*model.Issue,
+	parent *IssueTreeNode,
+	visited map[string]bool) *IssueTreeNode {
+
+	if issue == nil {
+		return nil
+	}
+
+	// Cycle detection - if we've already visited this node in current path
+	if visited[issue.ID] {
+		// Return a node marked as part of a cycle (no children to break the loop)
+		return &IssueTreeNode{
+			Issue:    issue,
+			Depth:    depth,
+			Parent:   parent,
+			Expanded: false,
+			// Children intentionally left empty to break cycle
+		}
+	}
+
+	// Mark as visited for cycle detection
+	visited[issue.ID] = true
+	defer func() { visited[issue.ID] = false }()
+
+	node := &IssueTreeNode{
+		Issue:    issue,
+		Depth:    depth,
+		Parent:   parent,
+		Expanded: depth < 2, // Auto-expand first 2 levels
+	}
+
+	// Store in lookup map
+	t.issueMap[issue.ID] = node
+
+	// Build children recursively
+	children := childrenOf[issue.ID]
+	for _, child := range children {
+		childNode := t.buildNode(child, depth+1, childrenOf, node, visited)
+		if childNode != nil {
+			node.Children = append(node.Children, childNode)
+		}
+	}
+
+	// Sort children
+	t.sortNodes(node.Children)
+
+	return node
+}
+
+// sortNodes sorts a slice of tree nodes by priority, issue type, then created date.
+func (t *TreeModel) sortNodes(nodes []*IssueTreeNode) {
+	if len(nodes) <= 1 {
+		return
+	}
+
+	sort.Slice(nodes, func(i, j int) bool {
+		a, b := nodes[i].Issue, nodes[j].Issue
+		if a == nil || b == nil {
+			return a != nil // Non-nil issues first
+		}
+
+		// 1. Priority (ascending - P0 first)
+		if a.Priority != b.Priority {
+			return a.Priority < b.Priority
+		}
+
+		// 2. IssueType order: epic → feature → task → bug → chore
+		aTypeOrder := issueTypeOrder(a.IssueType)
+		bTypeOrder := issueTypeOrder(b.IssueType)
+		if aTypeOrder != bTypeOrder {
+			return aTypeOrder < bTypeOrder
+		}
+
+		// 3. CreatedAt (oldest first for stable ordering)
+		return a.CreatedAt.Before(b.CreatedAt)
+	})
+}
+
+// issueTypeOrder returns a numeric order for issue types.
+// Lower numbers sort first: epic → feature → task → bug → chore
+func issueTypeOrder(t model.IssueType) int {
+	switch t {
+	case model.TypeEpic:
+		return 0
+	case model.TypeFeature:
+		return 1
+	case model.TypeTask:
+		return 2
+	case model.TypeBug:
+		return 3
+	case model.TypeChore:
+		return 4
+	default:
+		return 5
+	}
+}
+
 // View renders the tree view.
-// This is a placeholder - actual implementation in bv-1371.
+// Implementation for bv-1371.
 func (t *TreeModel) View() string {
 	if !t.built || len(t.flatList) == 0 {
-		return "Tree view: No issues to display.\nPress E to return to list view."
+		return t.renderEmptyState()
 	}
-	return "Tree view placeholder"
+
+	var sb strings.Builder
+
+	// Calculate available height for tree display
+	availHeight := t.height
+	if availHeight <= 0 {
+		availHeight = 20 // Default
+	}
+	_ = availHeight // Will be used for viewport scrolling in future
+
+	// Render visible nodes
+	for i, node := range t.flatList {
+		if node == nil || node.Issue == nil {
+			continue
+		}
+
+		isSelected := i == t.cursor
+		line := t.renderNode(node, isSelected)
+
+		if isSelected {
+			// Highlight selected row using theme's Selected style
+			line = t.theme.Selected.Render(line)
+		}
+
+		sb.WriteString(line)
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+// renderEmptyState renders the view when there are no issues.
+func (t *TreeModel) renderEmptyState() string {
+	r := t.theme.Renderer
+
+	titleStyle := r.NewStyle().
+		Foreground(t.theme.Primary).
+		Bold(true)
+
+	mutedStyle := r.NewStyle().
+		Foreground(t.theme.Muted)
+
+	var sb strings.Builder
+	sb.WriteString(titleStyle.Render("Tree View"))
+	sb.WriteString("\n\n")
+	sb.WriteString(mutedStyle.Render("No issues to display."))
+	sb.WriteString("\n\n")
+	sb.WriteString(mutedStyle.Render("To create hierarchy, add parent-child dependencies:"))
+	sb.WriteString("\n")
+	sb.WriteString(mutedStyle.Render("  bd dep add <child> parent-child:<parent>"))
+	sb.WriteString("\n\n")
+	sb.WriteString(mutedStyle.Render("Press E to return to list view."))
+
+	return sb.String()
+}
+
+// renderNode renders a single tree node with tree characters and styling.
+func (t *TreeModel) renderNode(node *IssueTreeNode, isSelected bool) string {
+	if node == nil || node.Issue == nil {
+		return ""
+	}
+
+	issue := node.Issue
+	r := t.theme.Renderer
+	var sb strings.Builder
+
+	// Build the tree prefix (indentation + branch characters)
+	prefix := t.buildTreePrefix(node)
+	sb.WriteString(prefix)
+
+	// Expand/collapse indicator
+	indicator := t.getExpandIndicator(node)
+	indicatorStyle := r.NewStyle().Foreground(t.theme.Secondary)
+	sb.WriteString(indicatorStyle.Render(indicator))
+	sb.WriteString(" ")
+
+	// Type icon
+	icon, iconColor := t.theme.GetTypeIcon(string(issue.IssueType))
+	iconStyle := r.NewStyle().Foreground(iconColor)
+	sb.WriteString(iconStyle.Render(icon))
+	sb.WriteString(" ")
+
+	// Priority badge (P0, P1, P2, etc.)
+	prioText := fmt.Sprintf("P%d", issue.Priority)
+	prioStyle := r.NewStyle().Bold(true)
+	if issue.Priority <= 1 {
+		prioStyle = prioStyle.Foreground(t.theme.Primary)
+	} else {
+		prioStyle = prioStyle.Foreground(t.theme.Muted)
+	}
+	sb.WriteString(prioStyle.Render(prioText))
+	sb.WriteString(" ")
+
+	// Issue ID
+	idStyle := r.NewStyle().Foreground(t.theme.Highlight)
+	sb.WriteString(idStyle.Render(issue.ID))
+	sb.WriteString(" ")
+
+	// Title (truncated if needed)
+	title := issue.Title
+	// Use lipgloss.Width for proper display width (handles ANSI codes + Unicode)
+	maxTitleLen := t.width - lipgloss.Width(prefix) - 25 // Account for prefix, indicator, icon, priority, ID
+	if maxTitleLen < 20 {
+		maxTitleLen = 20
+	}
+	title = t.truncateTitle(title, maxTitleLen)
+
+	// Title uses base style foreground
+	sb.WriteString(title)
+
+	// Status indicator (colored dot at end)
+	statusColor := t.theme.GetStatusColor(string(issue.Status))
+	statusDot := " " + GetStatusIcon(string(issue.Status))
+	statusStyle := r.NewStyle().Foreground(statusColor)
+	sb.WriteString(statusStyle.Render(statusDot))
+
+	return sb.String()
+}
+
+// buildTreePrefix builds the indentation and branch characters for a node.
+func (t *TreeModel) buildTreePrefix(node *IssueTreeNode) string {
+	if node.Depth == 0 {
+		return "" // Root nodes have no prefix
+	}
+
+	r := t.theme.Renderer
+	treeStyle := r.NewStyle().Foreground(t.theme.Muted)
+
+	var prefixParts []string
+
+	// Walk up the tree to build prefix
+	ancestors := t.getAncestors(node)
+
+	// For each ancestor level, determine if we need a vertical line
+	for i := 0; i < len(ancestors)-1; i++ {
+		ancestor := ancestors[i]
+		if t.hasSiblingsBelow(ancestor) {
+			prefixParts = append(prefixParts, "│   ")
+		} else {
+			prefixParts = append(prefixParts, "    ")
+		}
+	}
+
+	// Add the branch character for this node
+	if t.isLastChild(node) {
+		prefixParts = append(prefixParts, "└── ")
+	} else {
+		prefixParts = append(prefixParts, "├── ")
+	}
+
+	prefix := strings.Join(prefixParts, "")
+	return treeStyle.Render(prefix)
+}
+
+// getAncestors returns the ancestors of a node from root to parent, with the node itself at the end.
+// The last element is the node - used by buildTreePrefix which iterates to len-1.
+func (t *TreeModel) getAncestors(node *IssueTreeNode) []*IssueTreeNode {
+	var ancestors []*IssueTreeNode
+	current := node.Parent
+	for current != nil {
+		ancestors = append([]*IssueTreeNode{current}, ancestors...)
+		current = current.Parent
+	}
+	ancestors = append(ancestors, node) // Include the node at the end
+	return ancestors
+}
+
+// hasSiblingsBelow checks if a node has siblings below it in the tree.
+func (t *TreeModel) hasSiblingsBelow(node *IssueTreeNode) bool {
+	if node.Parent == nil {
+		// For root nodes, check if there are more roots after this one
+		for i, root := range t.roots {
+			if root == node {
+				return i < len(t.roots)-1
+			}
+		}
+		return false
+	}
+
+	// For non-root nodes, check siblings
+	for i, sibling := range node.Parent.Children {
+		if sibling == node {
+			return i < len(node.Parent.Children)-1
+		}
+	}
+	return false
+}
+
+// isLastChild checks if a node is the last child of its parent.
+func (t *TreeModel) isLastChild(node *IssueTreeNode) bool {
+	if node.Parent == nil {
+		// For root nodes, check if it's the last root
+		return len(t.roots) > 0 && t.roots[len(t.roots)-1] == node
+	}
+
+	parent := node.Parent
+	return len(parent.Children) > 0 && parent.Children[len(parent.Children)-1] == node
+}
+
+// getExpandIndicator returns the expand/collapse indicator for a node.
+func (t *TreeModel) getExpandIndicator(node *IssueTreeNode) string {
+	if len(node.Children) == 0 {
+		return "•" // Leaf node
+	}
+	if node.Expanded {
+		return "▾" // Expanded
+	}
+	return "▸" // Collapsed
+}
+
+// truncateTitle truncates a title to the given max length with ellipsis.
+func (t *TreeModel) truncateTitle(title string, maxLen int) string {
+	if maxLen <= 3 {
+		return "..."
+	}
+
+	runes := []rune(title)
+	if len(runes) <= maxLen {
+		return title
+	}
+
+	return string(runes[:maxLen-1]) + "…"
+}
+
+// GetPriorityColor returns the color for a priority level.
+func (t *TreeModel) GetPriorityColor(priority int) lipgloss.AdaptiveColor {
+	switch priority {
+	case 0:
+		return t.theme.Primary // Critical - red/bright
+	case 1:
+		return t.theme.Highlight // High - highlighted
+	case 2:
+		return t.theme.Secondary // Medium - yellow
+	default:
+		return t.theme.Muted // Low/backlog - gray
+	}
 }
 
 // SelectedIssue returns the currently selected issue, or nil if none.
