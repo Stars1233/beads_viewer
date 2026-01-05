@@ -256,11 +256,11 @@ func structuredTutorialPages() []StructuredTutorialPage {
 				Section{Title: "Example Dependency Tree"},
 				Tree{
 					Root: "Epic: User Auth (bv-001)",
-					Children: []TreeNode{
-						{Label: "Login Form (bv-002)", Children: []TreeNode{
+					Children: []TutorialTreeNode{
+						{Label: "Login Form (bv-002)", Children: []TutorialTreeNode{
 							{Label: "Login Tests (bv-005)"},
 						}},
-						{Label: "Signup Form (bv-003)", Children: []TreeNode{
+						{Label: "Signup Form (bv-003)", Children: []TutorialTreeNode{
 							{Label: "Signup Tests (bv-006)"},
 						}},
 						{Label: "Password Reset (bv-004)"},

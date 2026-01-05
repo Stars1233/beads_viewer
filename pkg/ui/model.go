@@ -48,6 +48,7 @@ const (
 	focusDetail
 	focusBoard
 	focusGraph
+	focusTree // Hierarchical tree view (bv-gllx)
 	focusLabelDashboard
 	focusInsights
 	focusActionable
@@ -269,6 +270,7 @@ type Model struct {
 	velocityComparison VelocityComparisonModel // bv-125
 	shortcutsSidebar   ShortcutsSidebar        // bv-3qi5
 	graphView          GraphModel
+	tree               TreeModel   // Hierarchical tree view (bv-gllx)
 	insightsPanel      InsightsModel
 	flowMatrix         FlowMatrixModel // Cross-label flow matrix
 	theme              Theme
@@ -876,6 +878,7 @@ func NewModel(issues []model.Issue, activeRecipe *recipe.Recipe, beadsPath strin
 		velocityComparison:     velocityComparison,
 		shortcutsSidebar:       shortcutsSidebar,
 		graphView:              graphView,
+		tree:                   NewTreeModel(theme),
 		insightsPanel:          insightsPanel,
 		theme:                  theme,
 		currentFilter:          "all",

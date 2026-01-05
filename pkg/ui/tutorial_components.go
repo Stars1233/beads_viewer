@@ -256,12 +256,14 @@ func (d Divider) Render(theme Theme, width int) string {
 // Tree renders a hierarchical tree structure using lipgloss/tree
 type Tree struct {
 	Root     string
-	Children []TreeNode
+	Children []TutorialTreeNode
 }
 
-type TreeNode struct {
+// TutorialTreeNode is a simple tree node for tutorial rendering.
+// Named to avoid collision with TreeNode in tree.go (bv-gllx feature).
+type TutorialTreeNode struct {
 	Label    string
-	Children []TreeNode
+	Children []TutorialTreeNode
 }
 
 func (t Tree) Render(theme Theme, width int) string {
@@ -293,7 +295,7 @@ func (t Tree) Render(theme Theme, width int) string {
 	return tr.String()
 }
 
-func buildTreeNode(node TreeNode, itemStyle, enumStyle lipgloss.Style) *tree.Tree {
+func buildTreeNode(node TutorialTreeNode, itemStyle, enumStyle lipgloss.Style) *tree.Tree {
 	t := tree.Root(itemStyle.Render(node.Label)).
 		EnumeratorStyle(enumStyle).
 		ItemStyle(itemStyle)
