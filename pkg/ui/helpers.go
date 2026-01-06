@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/Dicklesworthstone/beads_viewer/pkg/model"
 	"github.com/charmbracelet/lipgloss"
@@ -60,13 +59,15 @@ func truncateRunesHelper(s string, maxWidth int, suffix string) string {
 	return runewidth.Truncate(s, targetWidth, "") + suffix
 }
 
-// padRight pads string s with spaces on the right to length width
+// padRight pads string s with spaces on the right to reach visual width.
+// Uses go-runewidth to handle wide characters (emojis, CJK) correctly,
+// consistent with truncateRunesHelper which also uses visual width.
 func padRight(s string, width int) string {
-	runeCount := utf8.RuneCountInString(s)
-	if runeCount >= width {
+	visualWidth := runewidth.StringWidth(s)
+	if visualWidth >= width {
 		return s
 	}
-	return s + strings.Repeat(" ", width-runeCount)
+	return s + strings.Repeat(" ", width-visualWidth)
 }
 
 // truncate truncates string s to maxRunes

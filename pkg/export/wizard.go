@@ -130,6 +130,19 @@ func (w *Wizard) offerSavedConfig(saved *WizardConfig) (bool, error) {
 
 // Run executes the interactive wizard flow.
 func (w *Wizard) Run() (*WizardResult, error) {
+	// Early exit if stdin is not a terminal and is empty (e.g., piped empty input)
+	// This prevents hanging when the wizard is called non-interactively with no input
+	if !isTerminal() {
+		// Check if stdin has any data by checking if it's a pipe with content
+		stat, err := os.Stdin.Stat()
+		if err == nil {
+			// If stdin is a pipe or regular file with no data, exit early
+			if (stat.Mode()&os.ModeCharDevice) == 0 && stat.Size() == 0 {
+				return nil, fmt.Errorf("wizard requires interactive input; stdin is empty")
+			}
+		}
+	}
+
 	w.printBanner()
 
 	// Check for saved configuration first (unless BV_NO_SAVED_CONFIG is set)
