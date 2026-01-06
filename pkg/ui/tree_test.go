@@ -680,3 +680,61 @@ func TestTreeSelectByID(t *testing.T) {
 		t.Errorf("cursor should not change after failed SelectByID, got %s", tree.GetSelectedID())
 	}
 }
+
+// =============================================================================
+// TreeState persistence tests (bv-zv7p)
+// =============================================================================
+
+func TestDefaultTreeState(t *testing.T) {
+	state := DefaultTreeState()
+
+	if state.Version != TreeStateVersion {
+		t.Errorf("expected version %d, got %d", TreeStateVersion, state.Version)
+	}
+	if state.Expanded == nil {
+		t.Error("Expanded map should not be nil")
+	}
+	if len(state.Expanded) != 0 {
+		t.Errorf("expected empty Expanded map, got %d entries", len(state.Expanded))
+	}
+}
+
+func TestTreeStatePath(t *testing.T) {
+	tests := []struct {
+		name     string
+		beadsDir string
+		want     string
+	}{
+		{
+			name:     "default empty beads dir",
+			beadsDir: "",
+			want:     ".beads/tree-state.json",
+		},
+		{
+			name:     "custom beads dir",
+			beadsDir: "/path/to/beads",
+			want:     "/path/to/beads/tree-state.json",
+		},
+		{
+			name:     "relative beads dir",
+			beadsDir: "custom/.beads",
+			want:     "custom/.beads/tree-state.json",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := TreeStatePath(tt.beadsDir)
+			if got != tt.want {
+				t.Errorf("TreeStatePath(%q) = %q, want %q", tt.beadsDir, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTreeStateVersion(t *testing.T) {
+	// Ensure version constant is reasonable
+	if TreeStateVersion < 1 {
+		t.Errorf("TreeStateVersion should be >= 1, got %d", TreeStateVersion)
+	}
+}

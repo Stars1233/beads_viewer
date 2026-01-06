@@ -3,6 +3,7 @@ package ui
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -10,6 +11,55 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// TreeState represents the persistent state of the tree view (bv-zv7p).
+// This is saved to .beads/tree-state.json to preserve expand/collapse state
+// across sessions.
+//
+// File format (JSON):
+//
+//	{
+//	  "version": 1,
+//	  "expanded": {
+//	    "bv-123": true,   // explicitly expanded
+//	    "bv-456": false   // explicitly collapsed
+//	  }
+//	}
+//
+// Design notes:
+//   - Only stores explicit user changes; nodes not in the map use default behavior
+//   - Default: expanded for depth < 2, collapsed otherwise
+//   - Version field enables future schema migrations
+//   - Corrupted/missing file = use defaults (graceful degradation)
+type TreeState struct {
+	Version  int             `json:"version"`  // Schema version (currently 1)
+	Expanded map[string]bool `json:"expanded"` // Issue ID -> explicitly set state
+}
+
+// TreeStateVersion is the current schema version for tree persistence
+const TreeStateVersion = 1
+
+// DefaultTreeState returns a new TreeState with sensible defaults
+func DefaultTreeState() *TreeState {
+	return &TreeState{
+		Version:  TreeStateVersion,
+		Expanded: make(map[string]bool),
+	}
+}
+
+// treeStateFileName is the filename for persisted tree state
+const treeStateFileName = "tree-state.json"
+
+// TreeStatePath returns the path to the tree state file.
+// By default this is .beads/tree-state.json in the current directory.
+// The beadsDir parameter allows overriding the .beads directory location
+// (e.g., from BEADS_DIR environment variable).
+func TreeStatePath(beadsDir string) string {
+	if beadsDir == "" {
+		beadsDir = ".beads"
+	}
+	return filepath.Join(beadsDir, treeStateFileName)
+}
 
 // TreeViewMode determines what relationships are displayed
 type TreeViewMode int
