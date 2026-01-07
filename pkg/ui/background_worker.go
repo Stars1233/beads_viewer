@@ -4,7 +4,9 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 
 	"github.com/Dicklesworthstone/beads_viewer/pkg/analysis"
 	"github.com/Dicklesworthstone/beads_viewer/pkg/loader"
+	"github.com/Dicklesworthstone/beads_viewer/pkg/model"
 	"github.com/Dicklesworthstone/beads_viewer/pkg/watcher"
 )
 
@@ -27,6 +30,22 @@ const (
 	WorkerStopped
 )
 
+// WorkerError wraps errors with phase and retry context.
+type WorkerError struct {
+	Phase   string    // "load", "parse", "analyze_phase1", "analyze_phase2"
+	Cause   error     // The underlying error
+	Time    time.Time // When the error occurred
+	Retries int       // Number of retry attempts
+}
+
+func (e WorkerError) Error() string {
+	return fmt.Sprintf("%s failed: %v (retries: %d)", e.Phase, e.Cause, e.Retries)
+}
+
+func (e WorkerError) Unwrap() error {
+	return e.Cause
+}
+
 // BackgroundWorker manages background processing of beads data.
 // It owns the file watcher, implements coalescing, and builds snapshots
 // off the UI thread.
@@ -40,8 +59,12 @@ type BackgroundWorker struct {
 	state    WorkerState
 	dirty    bool // True if a change came in while processing
 	snapshot *DataSnapshot
-	started  bool // True if Start() has been called
+	started  bool   // True if Start() has been called
 	lastHash string // Content hash of last processed snapshot (for dedup)
+
+	// Error tracking
+	lastError *WorkerError // Most recent error (nil if last operation succeeded)
+	errorCount int         // Consecutive error count for backoff
 
 	// Components
 	watcher *watcher.Watcher
@@ -239,6 +262,51 @@ func (w *BackgroundWorker) process() {
 	}
 }
 
+// safeCompute executes fn and recovers from any panics.
+// Returns a WorkerError if fn panics, nil otherwise.
+func (w *BackgroundWorker) safeCompute(phase string, fn func() error) *WorkerError {
+	var result *WorkerError
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				result = &WorkerError{
+					Phase: phase,
+					Cause: fmt.Errorf("panic: %v\n%s", r, debug.Stack()),
+					Time:  time.Now(),
+				}
+			}
+		}()
+		if err := fn(); err != nil {
+			result = &WorkerError{
+				Phase: phase,
+				Cause: err,
+				Time:  time.Now(),
+			}
+		}
+	}()
+	return result
+}
+
+// recordError tracks an error and updates error state.
+func (w *BackgroundWorker) recordError(err *WorkerError) {
+	w.mu.Lock()
+	w.lastError = err
+	if err != nil {
+		w.errorCount++
+		err.Retries = w.errorCount
+	} else {
+		w.errorCount = 0
+	}
+	w.mu.Unlock()
+}
+
+// LastError returns the most recent error (nil if last operation succeeded).
+func (w *BackgroundWorker) LastError() *WorkerError {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.lastError
+}
+
 // buildSnapshot loads data and constructs a new DataSnapshot.
 // This is called from the worker goroutine (NOT the UI thread).
 // Returns nil if beadsPath is empty, loading fails, or content is unchanged.
@@ -249,14 +317,22 @@ func (w *BackgroundWorker) buildSnapshot() *DataSnapshot {
 
 	start := time.Now()
 
-	// Load issues from file
-	issues, err := loader.LoadIssuesFromFile(w.beadsPath)
-	if err != nil {
-		log.Printf("buildSnapshot: error loading %s: %v", w.beadsPath, err)
+	// Load issues from file with panic recovery
+	var issues []model.Issue
+	loadErr := w.safeCompute("load", func() error {
+		var err error
+		issues, err = loader.LoadIssuesFromFile(w.beadsPath)
+		return err
+	})
+
+	if loadErr != nil {
+		log.Printf("buildSnapshot: error loading %s: %v", w.beadsPath, loadErr)
+		w.recordError(loadErr)
+
 		// Send error to UI
 		if w.program != nil {
 			w.program.Send(SnapshotErrorMsg{
-				Err:         err,
+				Err:         loadErr,
 				Recoverable: true, // File errors are usually recoverable
 			})
 		}
@@ -275,14 +351,38 @@ func (w *BackgroundWorker) buildSnapshot() *DataSnapshot {
 
 	if hash == lastHash && lastHash != "" {
 		log.Printf("buildSnapshot: content unchanged (hash=%s), skipping rebuild", hash[:16])
+		// Clear any previous error on successful dedup
+		w.recordError(nil)
 		return nil
 	}
 
-	// Build snapshot (includes Phase 1 analysis)
+	// Build snapshot (includes Phase 1 analysis) with panic recovery
+	var snapshot *DataSnapshot
 	analyzeStart := time.Now()
-	builder := NewSnapshotBuilder(issues)
-	snapshot := builder.Build()
+	analyzeErr := w.safeCompute("analyze_phase1", func() error {
+		builder := NewSnapshotBuilder(issues)
+		snapshot = builder.Build()
+		return nil
+	})
+
 	analyzeDuration := time.Since(analyzeStart)
+
+	if analyzeErr != nil {
+		log.Printf("buildSnapshot: analysis error: %v", analyzeErr)
+		w.recordError(analyzeErr)
+
+		// Send error to UI
+		if w.program != nil {
+			w.program.Send(SnapshotErrorMsg{
+				Err:         analyzeErr,
+				Recoverable: true,
+			})
+		}
+		return nil
+	}
+
+	// Clear error on success
+	w.recordError(nil)
 
 	// Update lastHash for future dedup checks
 	w.mu.Lock()

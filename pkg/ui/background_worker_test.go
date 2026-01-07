@@ -3,6 +3,7 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -387,5 +388,156 @@ func TestBackgroundWorker_SnapshotHasDataHash(t *testing.T) {
 	// DataHash should match LastHash
 	if snapshot.DataHash != worker.LastHash() {
 		t.Errorf("DataHash mismatch: snapshot=%s, worker=%s", snapshot.DataHash, worker.LastHash())
+	}
+}
+
+func TestWorkerError_String(t *testing.T) {
+	err := WorkerError{
+		Phase:   "load",
+		Cause:   os.ErrNotExist,
+		Time:    time.Now(),
+		Retries: 3,
+	}
+
+	s := err.Error()
+	if s == "" {
+		t.Error("Error() should return non-empty string")
+	}
+
+	if !strings.Contains(s, "load") {
+		t.Errorf("Error() should contain phase 'load': %s", s)
+	}
+
+	if !strings.Contains(s, "3") {
+		t.Errorf("Error() should contain retry count: %s", s)
+	}
+
+	// Test Unwrap
+	if err.Unwrap() != os.ErrNotExist {
+		t.Error("Unwrap() should return underlying error")
+	}
+}
+
+func TestBackgroundWorker_LoadError(t *testing.T) {
+	// Create a worker pointing to non-existent file
+	cfg := WorkerConfig{
+		BeadsPath:     "/nonexistent/path/beads.jsonl",
+		DebounceDelay: 50 * time.Millisecond,
+	}
+
+	worker, err := NewBackgroundWorker(cfg)
+	if err != nil {
+		// Watcher creation might fail for non-existent path, which is fine
+		t.Skipf("Skipping test - watcher creation failed: %v", err)
+	}
+	defer worker.Stop()
+
+	// Trigger refresh
+	worker.TriggerRefresh()
+	time.Sleep(200 * time.Millisecond)
+
+	// Should have no snapshot (load failed)
+	if worker.GetSnapshot() != nil {
+		t.Error("Expected nil snapshot when file doesn't exist")
+	}
+
+	// Should have recorded error
+	lastErr := worker.LastError()
+	if lastErr == nil {
+		t.Error("Expected error to be recorded")
+	} else {
+		if lastErr.Phase != "load" {
+			t.Errorf("Expected phase 'load', got %q", lastErr.Phase)
+		}
+	}
+}
+
+func TestBackgroundWorker_ErrorRecovery(t *testing.T) {
+	tmpDir := t.TempDir()
+	beadsPath := filepath.Join(tmpDir, "beads.jsonl")
+
+	// Start with no file
+	cfg := WorkerConfig{
+		BeadsPath:     beadsPath,
+		DebounceDelay: 50 * time.Millisecond,
+	}
+
+	worker, err := NewBackgroundWorker(cfg)
+	if err != nil {
+		t.Fatalf("NewBackgroundWorker failed: %v", err)
+	}
+	defer worker.Stop()
+
+	// First refresh should fail (no file)
+	worker.TriggerRefresh()
+	time.Sleep(200 * time.Millisecond)
+
+	if worker.GetSnapshot() != nil {
+		t.Error("Expected nil snapshot when file doesn't exist")
+	}
+
+	// Now create the file
+	content := `{"id":"test-1","title":"Test","status":"open","priority":1,"issue_type":"task"}` + "\n"
+	if err := os.WriteFile(beadsPath, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	// Reset hash to force reload
+	worker.ResetHash()
+
+	// Second refresh should succeed
+	worker.TriggerRefresh()
+	time.Sleep(200 * time.Millisecond)
+
+	snapshot := worker.GetSnapshot()
+	if snapshot == nil {
+		t.Fatal("Expected snapshot after file created")
+	}
+
+	// Error should be cleared
+	if worker.LastError() != nil {
+		t.Error("Expected error to be cleared on success")
+	}
+}
+
+func TestBackgroundWorker_SafeCompute(t *testing.T) {
+	tmpDir := t.TempDir()
+	beadsPath := filepath.Join(tmpDir, "beads.jsonl")
+
+	content := `{"id":"test-1","title":"Test","status":"open","priority":1,"issue_type":"task"}` + "\n"
+	if err := os.WriteFile(beadsPath, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	cfg := WorkerConfig{
+		BeadsPath:     beadsPath,
+		DebounceDelay: 50 * time.Millisecond,
+	}
+
+	worker, err := NewBackgroundWorker(cfg)
+	if err != nil {
+		t.Fatalf("NewBackgroundWorker failed: %v", err)
+	}
+	defer worker.Stop()
+
+	// Test that safeCompute catches panics
+	err2 := worker.safeCompute("test", func() error {
+		panic("intentional panic for testing")
+	})
+
+	if err2 == nil {
+		t.Error("safeCompute should catch panics")
+	}
+
+	if err2.Phase != "test" {
+		t.Errorf("Expected phase 'test', got %q", err2.Phase)
+	}
+
+	// Verify worker still functional after panic
+	worker.TriggerRefresh()
+	time.Sleep(200 * time.Millisecond)
+
+	if worker.GetSnapshot() == nil {
+		t.Error("Worker should still be functional after panic recovery")
 	}
 }

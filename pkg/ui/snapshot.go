@@ -42,6 +42,11 @@ type DataSnapshot struct {
 	// Metadata
 	CreatedAt time.Time // When this snapshot was built
 	DataHash  string    // Hash of source data for cache validation
+
+	// Error state (for graceful degradation)
+	LoadError    error     // Non-nil if last load had recoverable errors
+	ErrorTime    time.Time // When error occurred
+	StaleWarning bool      // True if data is from previous successful load
 }
 
 // SnapshotBuilder constructs DataSnapshots from raw data.
