@@ -694,7 +694,11 @@ func buildBlockersToClear(analyzer *Analyzer, unblocksMap map[string][]string, l
 
 	// Sort by unblocks count descending
 	sort.Slice(blockers, func(i, j int) bool {
-		return len(blockers[i].unblocks) > len(blockers[j].unblocks)
+		if len(blockers[i].unblocks) != len(blockers[j].unblocks) {
+			return len(blockers[i].unblocks) > len(blockers[j].unblocks)
+		}
+		// Stable tie-breaker for deterministic robot output.
+		return blockers[i].id < blockers[j].id
 	})
 
 	result := make([]BlockerItem, 0, limit)
@@ -865,10 +869,14 @@ func computeTriageScoresFromImpact(baseScores []ImpactScore, unblocksMap map[str
 		}
 	}
 
+	// Precompute blocker depths once per triage run.
+	// GetBlockerDepth allocates per call; in triage scoring we call it O(N) times.
+	blockerDepths := computeBlockerDepths(analyzer, baseScores)
+
 	// Build triage scores
 	triageScores := make([]TriageScore, 0, len(baseScores))
 	for _, base := range baseScores {
-		ts := computeSingleTriageScore(base, unblocksMap, maxUnblocks, analyzer, opts)
+		ts := computeSingleTriageScore(base, unblocksMap, maxUnblocks, analyzer, opts, blockerDepths[base.IssueID])
 		triageScores = append(triageScores, ts)
 	}
 
@@ -884,7 +892,7 @@ func computeTriageScoresFromImpact(baseScores []ImpactScore, unblocksMap map[str
 }
 
 // computeSingleTriageScore calculates the triage score for a single issue
-func computeSingleTriageScore(base ImpactScore, unblocksMap map[string][]string, maxUnblocks int, analyzer *Analyzer, opts TriageScoringOptions) TriageScore {
+func computeSingleTriageScore(base ImpactScore, unblocksMap map[string][]string, maxUnblocks int, analyzer *Analyzer, opts TriageScoringOptions, blockerDepth int) TriageScore {
 	factors := TriageFactors{}
 	applied := []string{"base"}
 	pending := []string{}
@@ -903,7 +911,6 @@ func computeSingleTriageScore(base ImpactScore, unblocksMap map[string][]string,
 
 	// Calculate quick-win boost
 	// Quick wins are items with low blocker depth but high impact
-	blockerDepth := analyzer.GetBlockerDepth(base.IssueID)
 	if issue := analyzer.GetIssue(base.IssueID); issue == nil || issue.Status != model.StatusInProgress {
 		if blockerDepth <= opts.QuickWinMaxDepth && blockerDepth >= 0 {
 			// Lower depth = higher quick win potential
@@ -948,6 +955,52 @@ func computeSingleTriageScore(base ImpactScore, unblocksMap map[string][]string,
 		Priority:       base.Priority,
 		Status:         base.Status,
 	}
+}
+
+func computeBlockerDepths(analyzer *Analyzer, baseScores []ImpactScore) map[string]int {
+	memo := make(map[string]int, len(baseScores))
+	visited := make(map[string]bool, len(baseScores))
+
+	var dfs func(issueID string) int
+	dfs = func(issueID string) int {
+		if val, ok := memo[issueID]; ok {
+			return val
+		}
+		if visited[issueID] {
+			memo[issueID] = -1
+			return -1
+		}
+		visited[issueID] = true
+
+		blockers := analyzer.GetOpenBlockers(issueID)
+		if len(blockers) == 0 {
+			visited[issueID] = false
+			memo[issueID] = 0
+			return 0
+		}
+
+		maxChain := 0
+		for _, blockerID := range blockers {
+			depth := dfs(blockerID)
+			if depth == -1 {
+				visited[issueID] = false
+				memo[issueID] = -1
+				return -1
+			}
+			if depth+1 > maxChain {
+				maxChain = depth + 1
+			}
+		}
+
+		visited[issueID] = false
+		memo[issueID] = maxChain
+		return maxChain
+	}
+
+	for _, base := range baseScores {
+		_ = dfs(base.IssueID)
+	}
+	return memo
 }
 
 // GetBlockerDepth returns the depth of the blocker chain for an issue

@@ -92,10 +92,25 @@ func (a *Analyzer) ComputeImpactScoresFromStats(stats *GraphStats, now time.Time
 		return nil
 	}
 
-	// Get thread-safe copies of Phase 2 data
-	pageRank := stats.PageRank()
-	betweenness := stats.Betweenness()
-	criticalPath := stats.CriticalPathScore()
+	// Get Phase 2 data.
+	//
+	// If Phase 2 is complete, the underlying maps are immutable and safe to read
+	// directly (avoids copying O(N) maps on every triage/priority run).
+	// If Phase 2 is still computing, fall back to the safe copy accessors.
+	var pageRank map[string]float64
+	var betweenness map[string]float64
+	var criticalPath map[string]float64
+	if stats.IsPhase2Ready() {
+		stats.mu.RLock()
+		pageRank = stats.pageRank
+		betweenness = stats.betweenness
+		criticalPath = stats.criticalPathScore
+		stats.mu.RUnlock()
+	} else {
+		pageRank = stats.PageRank()
+		betweenness = stats.Betweenness()
+		criticalPath = stats.CriticalPathScore()
+	}
 
 	// Precompute blocker counts directly from dependencies to avoid relying on graph direction nuances.
 	blockerCounts := make(map[string]int)

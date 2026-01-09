@@ -59,6 +59,22 @@ func BenchmarkFullAnalysis_Disconnected500(b *testing.B) {
 	benchFullAnalysis(b, generateDisconnectedGraph(500))
 }
 
+// ============================================================================
+// Robot Workload Benchmarks (end-to-end scoring + JSON-friendly structs)
+// ============================================================================
+
+func BenchmarkRobotTriage_Sparse500(b *testing.B) {
+	issues := generateSparseGraph(500)
+	opts := analysis.TriageOptions{WaitForPhase2: true}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_ = analysis.ComputeTriageWithOptions(issues, opts)
+	}
+}
+
 func benchFullAnalysis(b *testing.B, issues []model.Issue) {
 	b.ReportAllocs()
 	b.ResetTimer()
